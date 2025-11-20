@@ -1080,11 +1080,17 @@ impl Editor {
                     use std::path::Path;
                     match prompt_type {
                         PromptType::OpenFile => {
-                            let path = Path::new(&input);
-                            if let Err(e) = self.open_file(path) {
+                            let input_path = Path::new(&input);
+                            let resolved_path = if input_path.is_absolute() {
+                                input_path.to_path_buf()
+                            } else {
+                                self.working_dir.join(input_path)
+                            };
+
+                            if let Err(e) = self.open_file(&resolved_path) {
                                 self.set_status_message(format!("Error opening file: {e}"));
                             } else {
-                                self.set_status_message(format!("Opened: {input}"));
+                                self.set_status_message(format!("Opened {}", resolved_path.display()));
                             }
                         }
                         PromptType::SaveFileAs => {

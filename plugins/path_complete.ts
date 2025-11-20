@@ -84,16 +84,47 @@ function entriesToSuggestions(entries: DirEntry[], basePath: string): PromptSugg
   });
 }
 
+function missingFileSuggestion(
+  input: string,
+  pattern: string,
+): PromptSuggestion | null {
+  if (pattern === "" || input === "") {
+    return null;
+  }
+
+  let absolutePath = input;
+  if (!editor.pathIsAbsolute(absolutePath)) {
+    let cwd: string;
+    try {
+      cwd = editor.getCwd();
+    } catch {
+      return null;
+    }
+    absolutePath = editor.pathJoin(cwd, absolutePath);
+  }
+
+  if (editor.fileExists(absolutePath)) {
+    return null;
+  }
+
+  return {
+    text: `${input} (new file)`,
+    description: "File does not exist yet",
+    value: input,
+  };
+}
+
 // Generate path completions for the given input
 function generateCompletions(input: string): PromptSuggestion[] {
   const { dir, pattern } = parsePath(input);
 
   // Read the directory
   const entries = editor.readDir(dir);
+  const newFileSuggestion = missingFileSuggestion(input, pattern);
 
   if (!entries) {
     // Directory doesn't exist or can't be read
-    return [];
+    return newFileSuggestion ? [newFileSuggestion] : [];
   }
 
   // Filter hidden files (starting with .) unless pattern starts with .
@@ -107,7 +138,11 @@ function generateCompletions(input: string): PromptSuggestion[] {
   const limited = filtered.slice(0, 100);
 
   // Convert to suggestions
-  return entriesToSuggestions(limited, dir);
+  const suggestions = entriesToSuggestions(limited, dir);
+  if (newFileSuggestion) {
+    suggestions.push(newFileSuggestion);
+  }
+  return suggestions;
 }
 
 // Handle prompt changes for file prompts
