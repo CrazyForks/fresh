@@ -327,10 +327,11 @@ fn op_fresh_delete_range(state: &mut OpState, buffer_id: u32, start: u32, end: u
 /// Add a colored highlight overlay to text without modifying content
 ///
 /// Overlays are visual decorations that persist until explicitly removed.
-/// Use prefixed IDs for easy batch removal (e.g., "spell:line42:word3").
+/// Add an overlay (visual decoration) to a buffer
+/// Use namespaces for easy batch removal (e.g., "spell", "todo").
 /// Multiple overlays can apply to the same range; colors blend.
 /// @param buffer_id - Target buffer ID
-/// @param overlay_id - Unique ID for removal; use prefixes for batching
+/// @param namespace - Optional namespace for grouping (use clearNamespace for batch removal)
 /// @param start - Start byte offset
 /// @param end - End byte offset
 /// @param r - Red (0-255)
@@ -339,11 +340,12 @@ fn op_fresh_delete_range(state: &mut OpState, buffer_id: u32, start: u32, end: u
 /// @param underline - Add underline decoration
 /// @param bold - Use bold text
 /// @param italic - Use italic text
+/// @returns true if overlay was added
 #[op2(fast)]
 fn op_fresh_add_overlay(
     state: &mut OpState,
     buffer_id: u32,
-    #[string] overlay_id: String,
+    #[string] namespace: String,
     start: u32,
     end: u32,
     r: u8,
@@ -355,11 +357,16 @@ fn op_fresh_add_overlay(
 ) -> bool {
     if let Some(runtime_state) = state.try_borrow::<Rc<RefCell<TsRuntimeState>>>() {
         let runtime_state = runtime_state.borrow();
+        let ns = if namespace.is_empty() {
+            None
+        } else {
+            Some(crate::overlay::OverlayNamespace::from_string(namespace))
+        };
         let result = runtime_state
             .command_sender
             .send(PluginCommand::AddOverlay {
                 buffer_id: BufferId(buffer_id as usize),
-                overlay_id,
+                namespace: ns,
                 range: (start as usize)..(end as usize),
                 color: (r, g, b),
                 underline,
@@ -371,15 +378,15 @@ fn op_fresh_add_overlay(
     false
 }
 
-/// Remove a specific overlay by ID
+/// Remove a specific overlay by its handle
 /// @param buffer_id - The buffer ID
-/// @param overlay_id - The overlay ID to remove
+/// @param handle - The overlay handle to remove
 /// @returns true if overlay was removed
 #[op2(fast)]
 fn op_fresh_remove_overlay(
     state: &mut OpState,
     buffer_id: u32,
-    #[string] overlay_id: String,
+    #[string] handle: String,
 ) -> bool {
     if let Some(runtime_state) = state.try_borrow::<Rc<RefCell<TsRuntimeState>>>() {
         let runtime_state = runtime_state.borrow();
@@ -387,30 +394,30 @@ fn op_fresh_remove_overlay(
             .command_sender
             .send(PluginCommand::RemoveOverlay {
                 buffer_id: BufferId(buffer_id as usize),
-                overlay_id,
+                handle: crate::overlay::OverlayHandle::from_string(handle),
             });
         return result.is_ok();
     }
     false
 }
 
-/// Remove all overlays with IDs starting with a prefix
+/// Clear all overlays in a namespace
 /// @param buffer_id - The buffer ID
-/// @param prefix - The prefix to match overlay IDs against
-/// @returns true if any overlays were removed
+/// @param namespace - The namespace to clear
+/// @returns true if successful
 #[op2(fast)]
-fn op_fresh_remove_overlays_by_prefix(
+fn op_fresh_clear_namespace(
     state: &mut OpState,
     buffer_id: u32,
-    #[string] prefix: String,
+    #[string] namespace: String,
 ) -> bool {
     if let Some(runtime_state) = state.try_borrow::<Rc<RefCell<TsRuntimeState>>>() {
         let runtime_state = runtime_state.borrow();
         let result = runtime_state
             .command_sender
-            .send(PluginCommand::RemoveOverlaysByPrefix {
+            .send(PluginCommand::ClearNamespace {
                 buffer_id: BufferId(buffer_id as usize),
-                prefix,
+                namespace: crate::overlay::OverlayNamespace::from_string(namespace),
             });
         return result.is_ok();
     }
@@ -2109,7 +2116,7 @@ extension!(
         op_fresh_delete_range,
         op_fresh_add_overlay,
         op_fresh_remove_overlay,
-        op_fresh_remove_overlays_by_prefix,
+        op_fresh_clear_namespace,
         op_fresh_set_line_numbers,
         op_fresh_clear_all_overlays,
         op_fresh_add_virtual_text,
@@ -2265,14 +2272,16 @@ impl TypeScriptRuntime {
                     },
 
                     // Overlays
-                    addOverlay(bufferId, overlayId, start, end, r, g, b, underline, bold = false, italic = false) {
-                        return core.ops.op_fresh_add_overlay(bufferId, overlayId, start, end, r, g, b, underline, bold, italic);
+                    // namespace: group overlays together for efficient batch removal
+                    // Use empty string for no namespace
+                    addOverlay(bufferId, namespace, start, end, r, g, b, underline, bold = false, italic = false) {
+                        return core.ops.op_fresh_add_overlay(bufferId, namespace, start, end, r, g, b, underline, bold, italic);
                     },
-                    removeOverlay(bufferId, overlayId) {
-                        return core.ops.op_fresh_remove_overlay(bufferId, overlayId);
+                    removeOverlay(bufferId, handle) {
+                        return core.ops.op_fresh_remove_overlay(bufferId, handle);
                     },
-                    removeOverlaysByPrefix(bufferId, prefix) {
-                        return core.ops.op_fresh_remove_overlays_by_prefix(bufferId, prefix);
+                    clearNamespace(bufferId, namespace) {
+                        return core.ops.op_fresh_clear_namespace(bufferId, namespace);
                     },
                     clearAllOverlays(bufferId) {
                         return core.ops.op_fresh_clear_all_overlays(bufferId);
@@ -3468,7 +3477,7 @@ mod tests {
         match &commands[3] {
             PluginCommand::AddOverlay {
                 buffer_id,
-                overlay_id,
+                namespace,
                 range,
                 color,
                 underline,
@@ -3476,7 +3485,7 @@ mod tests {
                 italic,
             } => {
                 assert_eq!(buffer_id.0, 42);
-                assert_eq!(overlay_id, "test-overlay");
+                assert_eq!(namespace.as_ref().map(|n| n.as_str()), Some("test-overlay"));
                 assert_eq!(range.start, 0);
                 assert_eq!(range.end, 50);
                 assert_eq!(*color, (255, 0, 0));
@@ -3490,10 +3499,10 @@ mod tests {
         match &commands[4] {
             PluginCommand::RemoveOverlay {
                 buffer_id,
-                overlay_id,
+                handle,
             } => {
                 assert_eq!(buffer_id.0, 42);
-                assert_eq!(overlay_id, "test-overlay");
+                assert_eq!(handle.as_str(), "test-overlay");
             }
             _ => panic!("Expected RemoveOverlay command"),
         }

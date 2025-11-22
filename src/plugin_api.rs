@@ -7,8 +7,9 @@ use crate::command_registry::CommandRegistry;
 use crate::commands::Command;
 use crate::event::{BufferId, SplitId};
 use crate::hooks::{HookCallback, HookRegistry};
-use serde_json::Value;
+use crate::overlay::{OverlayHandle, OverlayNamespace};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -175,10 +176,10 @@ pub enum PluginCommand {
         range: Range<usize>,
     },
 
-    /// Add an overlay to a buffer
+    /// Add an overlay to a buffer, returns handle via response channel
     AddOverlay {
         buffer_id: BufferId,
-        overlay_id: String,
+        namespace: Option<OverlayNamespace>,
         range: Range<usize>,
         color: (u8, u8, u8),
         underline: bool,
@@ -186,10 +187,10 @@ pub enum PluginCommand {
         italic: bool,
     },
 
-    /// Remove an overlay from a buffer
+    /// Remove an overlay by its opaque handle
     RemoveOverlay {
         buffer_id: BufferId,
-        overlay_id: String,
+        handle: OverlayHandle,
     },
 
     /// Set status message
@@ -245,8 +246,11 @@ pub enum PluginCommand {
     /// Remove all overlays from a buffer
     ClearAllOverlays { buffer_id: BufferId },
 
-    /// Remove overlays whose ID starts with the given prefix
-    RemoveOverlaysByPrefix { buffer_id: BufferId, prefix: String },
+    /// Remove all overlays in a namespace
+    ClearNamespace {
+        buffer_id: BufferId,
+        namespace: OverlayNamespace,
+    },
 
     /// Add virtual text (inline text that doesn't exist in the buffer)
     /// Used for color swatches, type hints, parameter hints, etc.
@@ -539,10 +543,11 @@ impl PluginApi {
     }
 
     /// Add an overlay (decoration) to a buffer
+    /// Returns an opaque handle that can be used to remove the overlay later
     pub fn add_overlay(
         &self,
         buffer_id: BufferId,
-        overlay_id: String,
+        namespace: Option<String>,
         range: Range<usize>,
         color: (u8, u8, u8),
         underline: bool,
@@ -551,7 +556,7 @@ impl PluginApi {
     ) -> Result<(), String> {
         self.send_command(PluginCommand::AddOverlay {
             buffer_id,
-            overlay_id,
+            namespace: namespace.map(crate::overlay::OverlayNamespace::from_string),
             range,
             color,
             underline,
@@ -560,11 +565,19 @@ impl PluginApi {
         })
     }
 
-    /// Remove an overlay from a buffer
-    pub fn remove_overlay(&self, buffer_id: BufferId, overlay_id: String) -> Result<(), String> {
+    /// Remove an overlay from a buffer by its handle
+    pub fn remove_overlay(&self, buffer_id: BufferId, handle: String) -> Result<(), String> {
         self.send_command(PluginCommand::RemoveOverlay {
             buffer_id,
-            overlay_id,
+            handle: crate::overlay::OverlayHandle::from_string(handle),
+        })
+    }
+
+    /// Clear all overlays in a namespace from a buffer
+    pub fn clear_namespace(&self, buffer_id: BufferId, namespace: String) -> Result<(), String> {
+        self.send_command(PluginCommand::ClearNamespace {
+            buffer_id,
+            namespace: crate::overlay::OverlayNamespace::from_string(namespace),
         })
     }
 
@@ -873,7 +886,7 @@ mod tests {
 
         let result = api.add_overlay(
             BufferId(1),
-            "test-overlay".to_string(),
+            Some("test-overlay".to_string()),
             0..10,
             (255, 0, 0),
             true,
@@ -886,7 +899,7 @@ mod tests {
         match received {
             PluginCommand::AddOverlay {
                 buffer_id,
-                overlay_id,
+                namespace,
                 range,
                 color,
                 underline,
@@ -894,7 +907,7 @@ mod tests {
                 italic,
             } => {
                 assert_eq!(buffer_id.0, 1);
-                assert_eq!(overlay_id, "test-overlay");
+                assert_eq!(namespace.as_ref().map(|n| n.as_str()), Some("test-overlay"));
                 assert_eq!(range, 0..10);
                 assert_eq!(color, (255, 0, 0));
                 assert!(underline);

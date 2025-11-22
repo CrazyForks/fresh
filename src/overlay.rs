@@ -1,6 +1,66 @@
 use crate::marker::{MarkerId, MarkerList};
 use ratatui::style::{Color, Style};
 use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Opaque handle for an overlay, returned to plugins for later removal.
+/// Internally a String (can be UUID, composite key, etc.) but plugins treat it as opaque.
+/// This is stable across text edits (unlike line-number-based IDs).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct OverlayHandle(pub String);
+
+impl OverlayHandle {
+    /// Generate a new unique handle
+    pub fn new() -> Self {
+        static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
+        Self(format!("ovl_{}", NEXT_HANDLE.fetch_add(1, Ordering::Relaxed)))
+    }
+
+    /// Create a handle from a string (for internal use)
+    pub fn from_string(s: String) -> Self {
+        Self(s)
+    }
+
+    /// Get the internal string representation
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for OverlayHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Namespace for grouping overlays (for efficient bulk removal).
+/// Plugins create a namespace once and use it for all their overlays.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct OverlayNamespace(pub String);
+
+impl OverlayNamespace {
+    /// Generate a new unique namespace
+    pub fn new() -> Self {
+        static NEXT_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+        Self(format!("ns_{}", NEXT_NAMESPACE.fetch_add(1, Ordering::Relaxed)))
+    }
+
+    /// Create a namespace from a string (for plugin registration)
+    pub fn from_string(s: String) -> Self {
+        Self(s)
+    }
+
+    /// Get the internal string representation
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for OverlayNamespace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Overlay face - defines the visual appearance of an overlay
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +96,12 @@ pub type Priority = i32;
 /// Uses markers for content-anchored positions that automatically adjust with edits
 #[derive(Debug, Clone)]
 pub struct Overlay {
+    /// Unique handle for this overlay (opaque, for removal by handle)
+    pub handle: OverlayHandle,
+
+    /// Namespace this overlay belongs to (for bulk removal)
+    pub namespace: Option<OverlayNamespace>,
+
     /// Start marker (left affinity - stays before inserted text)
     pub start_marker: MarkerId,
 
@@ -48,9 +114,6 @@ pub struct Overlay {
     /// Priority for z-ordering (higher = on top)
     pub priority: Priority,
 
-    /// Optional identifier for this overlay (for removal/updates)
-    pub id: Option<String>,
-
     /// Optional tooltip/message to show when hovering over this overlay
     pub message: Option<String>,
 }
@@ -62,18 +125,33 @@ impl Overlay {
     /// * `marker_list` - MarkerList to create markers in
     /// * `range` - Byte range for the overlay
     /// * `face` - Visual appearance
+    ///
+    /// Returns the overlay (which contains its handle for later removal)
     pub fn new(marker_list: &mut MarkerList, range: Range<usize>, face: OverlayFace) -> Self {
         let start_marker = marker_list.create(range.start, true); // left affinity
         let end_marker = marker_list.create(range.end, false); // right affinity
 
         Self {
+            handle: OverlayHandle::new(),
+            namespace: None,
             start_marker,
             end_marker,
             face,
             priority: 0,
-            id: None,
             message: None,
         }
+    }
+
+    /// Create an overlay with a namespace (for bulk removal)
+    pub fn with_namespace(
+        marker_list: &mut MarkerList,
+        range: Range<usize>,
+        face: OverlayFace,
+        namespace: OverlayNamespace,
+    ) -> Self {
+        let mut overlay = Self::new(marker_list, range, face);
+        overlay.namespace = Some(namespace);
+        overlay
     }
 
     /// Create an overlay with a specific priority
@@ -88,18 +166,6 @@ impl Overlay {
         overlay
     }
 
-    /// Create an overlay with an ID (for later reference)
-    pub fn with_id(
-        marker_list: &mut MarkerList,
-        range: Range<usize>,
-        face: OverlayFace,
-        id: String,
-    ) -> Self {
-        let mut overlay = Self::new(marker_list, range, face);
-        overlay.id = Some(id);
-        overlay
-    }
-
     /// Add a message/tooltip to this overlay
     pub fn with_message(mut self, message: String) -> Self {
         self.message = Some(message);
@@ -109,6 +175,12 @@ impl Overlay {
     /// Set the priority
     pub fn with_priority_value(mut self, priority: Priority) -> Self {
         self.priority = priority;
+        self
+    }
+
+    /// Set the namespace
+    pub fn with_namespace_value(mut self, namespace: OverlayNamespace) -> Self {
+        self.namespace = Some(namespace);
         self
     }
 
@@ -136,7 +208,7 @@ impl Overlay {
 /// Overlays are sorted by priority for efficient rendering
 #[derive(Debug, Clone)]
 pub struct OverlayManager {
-    /// All active overlays
+    /// All active overlays, indexed for O(1) lookup by handle
     overlays: Vec<Overlay>,
 }
 
@@ -148,25 +220,39 @@ impl OverlayManager {
         }
     }
 
-    /// Add an overlay
-    pub fn add(&mut self, overlay: Overlay) {
+    /// Add an overlay and return its handle for later removal
+    pub fn add(&mut self, overlay: Overlay) -> OverlayHandle {
+        let handle = overlay.handle.clone();
         self.overlays.push(overlay);
         // Keep sorted by priority (ascending - lower priority first)
         self.overlays.sort_by_key(|o| o.priority);
+        handle
     }
 
-    /// Remove all overlays with a specific ID and clean up their markers
-    pub fn remove_by_id(&mut self, id: &str, marker_list: &mut MarkerList) {
+    /// Remove an overlay by its handle
+    pub fn remove_by_handle(&mut self, handle: &OverlayHandle, marker_list: &mut MarkerList) -> bool {
+        if let Some(pos) = self.overlays.iter().position(|o| &o.handle == handle) {
+            let overlay = self.overlays.remove(pos);
+            marker_list.delete(overlay.start_marker);
+            marker_list.delete(overlay.end_marker);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove all overlays in a namespace
+    pub fn clear_namespace(&mut self, namespace: &OverlayNamespace, marker_list: &mut MarkerList) {
         // Collect markers to delete
         let markers_to_delete: Vec<_> = self
             .overlays
             .iter()
-            .filter(|o| o.id.as_deref() == Some(id))
+            .filter(|o| o.namespace.as_ref() == Some(namespace))
             .flat_map(|o| vec![o.start_marker, o.end_marker])
             .collect();
 
         // Remove overlays
-        self.overlays.retain(|o| o.id.as_deref() != Some(id));
+        self.overlays.retain(|o| o.namespace.as_ref() != Some(namespace));
 
         // Delete markers
         for marker_id in markers_to_delete {
@@ -231,20 +317,6 @@ impl OverlayManager {
     /// # Performance
     /// - Old approach: O(N * M) where N = positions to check, M = overlay count
     /// - This approach: O(log M + k) where k = overlays in viewport (typically 2-10)
-    ///
-    /// # Example
-    /// ```ignore
-    /// // Query once per frame
-    /// let viewport_overlays = overlays.query_viewport(viewport_start, viewport_end, &marker_list);
-    ///
-    /// // Then for each character position, only check the small viewport_overlays list
-    /// for pos in positions {
-    ///     let overlays_here = viewport_overlays
-    ///         .iter()
-    ///         .filter(|(_, range)| range.contains(&pos))
-    ///         .map(|(overlay, _)| *overlay);
-    /// }
-    /// ```
     pub fn query_viewport(
         &self,
         start: usize,
@@ -284,47 +356,14 @@ impl OverlayManager {
             .collect()
     }
 
-    /// Get overlay by ID
-    pub fn get_by_id(&self, id: &str) -> Option<&Overlay> {
-        self.overlays.iter().find(|o| o.id.as_deref() == Some(id))
+    /// Get overlay by handle
+    pub fn get_by_handle(&self, handle: &OverlayHandle) -> Option<&Overlay> {
+        self.overlays.iter().find(|o| &o.handle == handle)
     }
 
-    /// Get mutable overlay by ID
-    pub fn get_by_id_mut(&mut self, id: &str) -> Option<&mut Overlay> {
-        self.overlays
-            .iter_mut()
-            .find(|o| o.id.as_deref() == Some(id))
-    }
-
-    /// Remove all overlays whose ID starts with the given prefix
-    pub fn remove_by_prefix(&mut self, prefix: &str, marker_list: &mut MarkerList) {
-        // Collect markers to delete
-        let markers_to_delete: Vec<_> = self
-            .overlays
-            .iter()
-            .filter(|o| {
-                if let Some(id) = &o.id {
-                    id.starts_with(prefix)
-                } else {
-                    false
-                }
-            })
-            .flat_map(|o| vec![o.start_marker, o.end_marker])
-            .collect();
-
-        // Remove overlays
-        self.overlays.retain(|o| {
-            if let Some(id) = &o.id {
-                !id.starts_with(prefix)
-            } else {
-                true
-            }
-        });
-
-        // Delete markers
-        for marker_id in markers_to_delete {
-            marker_list.delete(marker_id);
-        }
+    /// Get mutable overlay by handle
+    pub fn get_by_handle_mut(&mut self, handle: &OverlayHandle) -> Option<&mut Overlay> {
+        self.overlays.iter_mut().find(|o| &o.handle == handle)
     }
 
     /// Get total number of overlays
@@ -514,18 +553,55 @@ mod tests {
         marker_list.set_buffer_size(100);
         let mut manager = OverlayManager::new();
 
-        let overlay = Overlay::with_id(
+        let overlay = Overlay::new(
             &mut marker_list,
             5..10,
             OverlayFace::Background { color: Color::Red },
-            "test-1".to_string(),
         );
 
-        manager.add(overlay);
+        let handle = manager.add(overlay);
         assert_eq!(manager.len(), 1);
 
-        manager.remove_by_id("test-1", &mut marker_list);
+        manager.remove_by_handle(&handle, &mut marker_list);
         assert_eq!(manager.len(), 0);
+    }
+
+    #[test]
+    fn test_overlay_namespace_clear() {
+        let mut marker_list = MarkerList::new();
+        marker_list.set_buffer_size(100);
+        let mut manager = OverlayManager::new();
+
+        let ns = OverlayNamespace::from_string("todo".to_string());
+
+        // Add overlays in namespace
+        let overlay1 = Overlay::with_namespace(
+            &mut marker_list,
+            5..10,
+            OverlayFace::Background { color: Color::Red },
+            ns.clone(),
+        );
+        let overlay2 = Overlay::with_namespace(
+            &mut marker_list,
+            15..20,
+            OverlayFace::Background { color: Color::Blue },
+            ns.clone(),
+        );
+        // Add overlay without namespace
+        let overlay3 = Overlay::new(
+            &mut marker_list,
+            25..30,
+            OverlayFace::Background { color: Color::Green },
+        );
+
+        manager.add(overlay1);
+        manager.add(overlay2);
+        manager.add(overlay3);
+        assert_eq!(manager.len(), 3);
+
+        // Clear only the namespace
+        manager.clear_namespace(&ns, &mut marker_list);
+        assert_eq!(manager.len(), 1); // Only overlay3 remains
     }
 
     #[test]

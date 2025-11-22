@@ -1,3 +1,4 @@
+use crate::overlay::{OverlayHandle, OverlayNamespace};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -102,22 +103,21 @@ pub enum Event {
 
     /// Add an overlay (for decorations like underlines, highlights)
     AddOverlay {
-        overlay_id: String,
+        namespace: Option<OverlayNamespace>,
         range: Range<usize>,
         face: OverlayFace,
         priority: i32,
         message: Option<String>,
     },
 
-    /// Remove overlay by ID
-    RemoveOverlay {
-        overlay_id: String,
-    },
+    /// Remove overlay by handle
+    RemoveOverlay { handle: OverlayHandle },
 
     /// Remove all overlays in a range
-    RemoveOverlaysInRange {
-        range: Range<usize>,
-    },
+    RemoveOverlaysInRange { range: Range<usize> },
+
+    /// Clear all overlays in a namespace
+    ClearNamespace { namespace: OverlayNamespace },
 
     /// Clear all overlays
     ClearOverlays,
@@ -378,18 +378,16 @@ impl Event {
                     new_sticky_column: *old_sticky_column,
                 })
             }
-            Event::AddOverlay {
-                overlay_id,
-                range: _,
-                face: _,
-                priority: _,
-                message: _,
-            } => Some(Event::RemoveOverlay {
-                overlay_id: overlay_id.clone(),
-            }),
-            Event::RemoveOverlay { overlay_id: _ } => {
-                // We can't fully invert RemoveOverlay without storing the removed overlay data
-                // For now, just return None - this could be improved by storing overlay data
+            Event::AddOverlay { .. } => {
+                // Overlays are ephemeral decorations, not undoable
+                None
+            }
+            Event::RemoveOverlay { .. } => {
+                // Overlays are ephemeral decorations, not undoable
+                None
+            }
+            Event::ClearNamespace { .. } => {
+                // Overlays are ephemeral decorations, not undoable
                 None
             }
             Event::Scroll { line_offset } => Some(Event::Scroll {

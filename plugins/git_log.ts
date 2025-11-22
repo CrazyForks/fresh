@@ -312,7 +312,7 @@ function applyGitLogHighlighting(): void {
   const bufferId = gitLogState.bufferId;
 
   // Clear existing overlays
-  editor.removeOverlaysByPrefix(bufferId, "gitlog-");
+  editor.clearNamespace(bufferId, "gitlog");
 
   // Use cached content (getBufferText doesn't work for virtual buffers)
   const content = gitLogState.cachedContent;
@@ -334,7 +334,7 @@ function applyGitLogHighlighting(): void {
     if (line === "Commits:") {
       editor.addOverlay(
         bufferId,
-        `gitlog-section-${lineIdx}`,
+        "gitlog",
         lineStart,
         lineEnd,
         colors.header[0],
@@ -362,7 +362,7 @@ function applyGitLogHighlighting(): void {
     if (isCurrentLine) {
       editor.addOverlay(
         bufferId,
-        `gitlog-cursorline-${lineIdx}`,
+        "gitlog",
         lineStart,
         lineEnd,
         colors.selected[0],
@@ -379,7 +379,7 @@ function applyGitLogHighlighting(): void {
     const hashEnd = commit.shortHash.length;
     editor.addOverlay(
       bufferId,
-      `gitlog-hash-${lineIdx}`,
+      "gitlog",
       lineStart,
       lineStart + hashEnd,
       colors.hash[0],
@@ -398,7 +398,7 @@ function applyGitLogHighlighting(): void {
       const authorEnd = authorStart + commit.author.length;
       editor.addOverlay(
         bufferId,
-        `gitlog-author-${lineIdx}`,
+        "gitlog",
         authorStart,
         authorEnd,
         colors.author[0],
@@ -418,7 +418,7 @@ function applyGitLogHighlighting(): void {
       const dateEnd = dateStart + commit.relativeDate.length;
       editor.addOverlay(
         bufferId,
-        `gitlog-date-${lineIdx}`,
+        "gitlog",
         dateStart,
         dateEnd,
         colors.date[0],
@@ -447,7 +447,7 @@ function applyGitLogHighlighting(): void {
 
         editor.addOverlay(
           bufferId,
-          `gitlog-refs-${lineIdx}`,
+          "gitlog",
           refsStart,
           refsEnd,
           refColor[0],
@@ -601,7 +601,7 @@ function applyCommitDetailHighlighting(): void {
   const bufferId = commitDetailState.bufferId;
 
   // Clear existing overlays
-  editor.removeOverlaysByPrefix(bufferId, "gitdetail-");
+  editor.clearNamespace(bufferId, "gitdetail");
 
   // Use cached content (getBufferText doesn't work for virtual buffers)
   const content = commitDetailState.cachedContent;
@@ -619,7 +619,7 @@ function applyCommitDetailHighlighting(): void {
     if (line.startsWith("+") && !line.startsWith("+++")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-add-${lineIdx}`,
+        "gitdetail",
         lineStart,
         lineEnd,
         colors.diffAdd[0],
@@ -634,7 +634,7 @@ function applyCommitDetailHighlighting(): void {
     else if (line.startsWith("-") && !line.startsWith("---")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-del-${lineIdx}`,
+        "gitdetail",
         lineStart,
         lineEnd,
         colors.diffDel[0],
@@ -649,7 +649,7 @@ function applyCommitDetailHighlighting(): void {
     else if (line.startsWith("@@")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-hunk-${lineIdx}`,
+        "gitdetail",
         lineStart,
         lineEnd,
         colors.diffHunk[0],
@@ -667,7 +667,7 @@ function applyCommitDetailHighlighting(): void {
         const hashStart = lineStart + 7; // "commit " is 7 chars
         editor.addOverlay(
           bufferId,
-          `gitdetail-hash-${lineIdx}`,
+          "gitdetail",
           hashStart,
           hashStart + hashMatch[1].length,
           colors.hash[0],
@@ -683,7 +683,7 @@ function applyCommitDetailHighlighting(): void {
     else if (line.startsWith("Author:")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-author-${lineIdx}`,
+        "gitdetail",
         lineStart + 8, // "Author: " is 8 chars
         lineEnd,
         colors.author[0],
@@ -698,7 +698,7 @@ function applyCommitDetailHighlighting(): void {
     else if (line.startsWith("Date:")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-date-${lineIdx}`,
+        "gitdetail",
         lineStart + 6, // "Date: " is 6 chars (with trailing spaces it's 8)
         lineEnd,
         colors.date[0],
@@ -713,7 +713,7 @@ function applyCommitDetailHighlighting(): void {
     else if (line.startsWith("diff --git")) {
       editor.addOverlay(
         bufferId,
-        `gitdetail-diffheader-${lineIdx}`,
+        "gitdetail",
         lineStart,
         lineEnd,
         colors.header[0],
@@ -1048,7 +1048,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
   const lines = content.split("\n");
 
   // Clear existing overlays
-  editor.removeOverlaysByPrefix(bufferId, "syntax-");
+  editor.clearNamespace(bufferId, "syntax");
 
   let byteOffset = 0;
   let inMultilineComment = false;
@@ -1070,7 +1070,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
         inMultilineComment = true;
       }
       if (inMultilineComment) {
-        editor.addOverlay(bufferId, `syntax-comment-${lineIdx}`, lineStart, lineStart + line.length, colors.syntaxComment[0], colors.syntaxComment[1], colors.syntaxComment[2], false, false, true);
+        editor.addOverlay(bufferId, "syntax", lineStart, lineStart + line.length, colors.syntaxComment[0], colors.syntaxComment[1], colors.syntaxComment[2], false, false, true);
         if (line.includes("*/")) {
           inMultilineComment = false;
         }
@@ -1089,7 +1089,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
       }
     }
     if (inMultilineString) {
-      editor.addOverlay(bufferId, `syntax-string-${lineIdx}`, lineStart, lineStart + line.length, colors.syntaxString[0], colors.syntaxString[1], colors.syntaxString[2], false, false, false);
+      editor.addOverlay(bufferId, "syntax", lineStart, lineStart + line.length, colors.syntaxString[0], colors.syntaxString[1], colors.syntaxString[2], false, false, false);
       byteOffset += line.length + 1;
       continue;
     }
@@ -1103,7 +1103,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
     }
 
     if (commentStart >= 0) {
-      editor.addOverlay(bufferId, `syntax-comment-${lineIdx}`, lineStart + commentStart, lineStart + line.length, colors.syntaxComment[0], colors.syntaxComment[1], colors.syntaxComment[2], false, false, true);
+      editor.addOverlay(bufferId, "syntax", lineStart + commentStart, lineStart + line.length, colors.syntaxComment[0], colors.syntaxComment[1], colors.syntaxComment[2], false, false, true);
     }
 
     // String highlighting (simple: find "..." and '...')
@@ -1122,7 +1122,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
         if (i < line.length) i++; // Include closing quote
         const end = i;
         if (commentStart < 0 || start < commentStart) {
-          editor.addOverlay(bufferId, `syntax-string-${lineIdx}-${stringCount++}`, lineStart + start, lineStart + end, colors.syntaxString[0], colors.syntaxString[1], colors.syntaxString[2], false, false, false);
+          editor.addOverlay(bufferId, "syntax", lineStart + start, lineStart + end, colors.syntaxString[0], colors.syntaxString[1], colors.syntaxString[2], false, false, false);
         }
       } else {
         i++;
@@ -1138,7 +1138,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
         const kwEnd = kwStart + keyword.length;
         // Don't highlight if inside comment
         if (commentStart < 0 || kwStart < commentStart) {
-          editor.addOverlay(bufferId, `syntax-kw-${lineIdx}-${kwStart}`, lineStart + kwStart, lineStart + kwEnd, colors.syntaxKeyword[0], colors.syntaxKeyword[1], colors.syntaxKeyword[2], false, true, false);
+          editor.addOverlay(bufferId, "syntax", lineStart + kwStart, lineStart + kwEnd, colors.syntaxKeyword[0], colors.syntaxKeyword[1], colors.syntaxKeyword[2], false, true, false);
         }
       }
     }
@@ -1150,7 +1150,7 @@ function applyFileViewHighlighting(bufferId: number, content: string, filePath: 
       const numStart = numMatch.index;
       const numEnd = numStart + numMatch[0].length;
       if (commentStart < 0 || numStart < commentStart) {
-        editor.addOverlay(bufferId, `syntax-num-${lineIdx}-${numStart}`, lineStart + numStart, lineStart + numEnd, colors.syntaxNumber[0], colors.syntaxNumber[1], colors.syntaxNumber[2], false, false, false);
+        editor.addOverlay(bufferId, "syntax", lineStart + numStart, lineStart + numEnd, colors.syntaxNumber[0], colors.syntaxNumber[1], colors.syntaxNumber[2], false, false, false);
       }
     }
 

@@ -1527,10 +1527,10 @@ impl Editor {
                             original_text,
                             start_pos,
                             end_pos: _,
-                            overlay_id,
+                            overlay_handle,
                         } => {
                             // Perform LSP rename with the new name from the prompt input
-                            self.perform_lsp_rename(input, original_text, start_pos, overlay_id);
+                            self.perform_lsp_rename(input, original_text, start_pos, overlay_handle);
                         }
                     }
                 }

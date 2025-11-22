@@ -916,8 +916,8 @@ impl EditorTestHarness {
             .all()
             .iter()
             .filter(|o| {
-                o.id.as_ref()
-                    .map(|id| id.starts_with("search_highlight_"))
+                o.namespace.as_ref()
+                    .map(|ns| ns.as_str().starts_with("search"))
                     .unwrap_or(false)
             })
             .count()

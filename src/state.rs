@@ -401,15 +401,15 @@ impl EditorState {
             }
 
             Event::AddOverlay {
-                overlay_id,
+                namespace,
                 range,
                 face,
                 priority,
                 message,
             } => {
                 tracing::debug!(
-                    "AddOverlay: id={}, range={:?}, face={:?}, priority={}",
-                    overlay_id,
+                    "AddOverlay: namespace={:?}, range={:?}, face={:?}, priority={}",
+                    namespace,
                     range,
                     face,
                     priority
@@ -424,28 +424,33 @@ impl EditorState {
                     overlay_face,
                     *priority,
                 );
-                overlay.id = Some(overlay_id.clone());
+                overlay.namespace = namespace.clone();
                 overlay.message = message.clone();
 
                 let actual_range = overlay.range(&self.marker_list);
                 tracing::debug!(
-                    "Created overlay with markers - actual range: {:?}, start_marker={:?}, end_marker={:?}",
+                    "Created overlay with markers - actual range: {:?}, handle={:?}",
                     actual_range,
-                    overlay.start_marker,
-                    overlay.end_marker
+                    overlay.handle
                 );
 
                 self.overlays.add(overlay);
             }
 
-            Event::RemoveOverlay { overlay_id } => {
-                tracing::debug!("RemoveOverlay: id={}", overlay_id);
+            Event::RemoveOverlay { handle } => {
+                tracing::debug!("RemoveOverlay: handle={:?}", handle);
                 self.overlays
-                    .remove_by_id(overlay_id, &mut self.marker_list);
+                    .remove_by_handle(handle, &mut self.marker_list);
             }
 
             Event::RemoveOverlaysInRange { range } => {
                 self.overlays.remove_in_range(range, &mut self.marker_list);
+            }
+
+            Event::ClearNamespace { namespace } => {
+                tracing::debug!("ClearNamespace: namespace={:?}", namespace);
+                self.overlays
+                    .clear_namespace(namespace, &mut self.marker_list);
             }
 
             Event::ClearOverlays => {

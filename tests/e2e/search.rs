@@ -524,8 +524,8 @@ fn test_search_highlights_update_on_scroll() {
         .all()
         .iter()
         .find(|o| {
-            o.id.as_ref()
-                .map(|id| id.starts_with("search_highlight_"))
+            o.namespace.as_ref()
+                .map(|ns| ns.as_str().starts_with("search"))
                 .unwrap_or(false)
         })
         .and_then(|o| state.marker_list.get_position(o.start_marker))
@@ -555,8 +555,8 @@ fn test_search_highlights_update_on_scroll() {
         .all()
         .iter()
         .find(|o| {
-            o.id.as_ref()
-                .map(|id| id.starts_with("search_highlight_"))
+            o.namespace.as_ref()
+                .map(|ns| ns.as_str().starts_with("search"))
                 .unwrap_or(false)
         })
         .and_then(|o| state.marker_list.get_position(o.start_marker))

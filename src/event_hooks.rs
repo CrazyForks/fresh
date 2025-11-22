@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn test_overlay_event_no_hooks() {
         let event = Event::AddOverlay {
-            overlay_id: "test".to_string(),
+            namespace: Some(crate::overlay::OverlayNamespace::from_string("test".to_string())),
             range: 0..5,
             face: crate::event::OverlayFace::Background { color: (255, 0, 0) },
             priority: 10,

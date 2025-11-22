@@ -559,6 +559,21 @@ deleteRange(buffer_id: number, start: number, end: number): boolean
 | `start` | `number` | Start byte offset (inclusive) |
 | `end` | `number` | End byte offset (exclusive) |
 
+#### `clearNamespace`
+
+Clear all overlays in a namespace
+
+```typescript
+clearNamespace(buffer_id: number, namespace: string): boolean
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `buffer_id` | `number` | The buffer ID |
+| `namespace` | `string` | The namespace to clear |
+
 #### `setLineNumbers`
 
 Enable/disable line numbers for a buffer
@@ -728,11 +743,12 @@ editor.setStatus(`git failed: ${result.stderr}`);
 
 Add a colored highlight overlay to text without modifying content
 Overlays are visual decorations that persist until explicitly removed.
-Use prefixed IDs for easy batch removal (e.g., "spell:line42:word3").
+Add an overlay (visual decoration) to a buffer
+Use namespaces for easy batch removal (e.g., "spell", "todo").
 Multiple overlays can apply to the same range; colors blend.
 
 ```typescript
-addOverlay(buffer_id: number, overlay_id: string, start: number, end: number, r: number, g: number, b: number, underline: boolean, bold: boolean, italic: boolean): boolean
+addOverlay(buffer_id: number, namespace: string, start: number, end: number, r: number, g: number, b: number, underline: boolean, bold: boolean, italic: boolean): boolean
 ```
 
 **Parameters:**
@@ -740,7 +756,7 @@ addOverlay(buffer_id: number, overlay_id: string, start: number, end: number, r:
 | Name | Type | Description |
 |------|------|-------------|
 | `buffer_id` | `number` | Target buffer ID |
-| `overlay_id` | `string` | Unique ID for removal; use prefixes for batching |
+| `namespace` | `string` | Optional namespace for grouping (use clearNamespace for batch removal) |
 | `start` | `number` | Start byte offset |
 | `end` | `number` | End byte offset |
 | `r` | `number` | Red (0-255) |
@@ -752,10 +768,10 @@ addOverlay(buffer_id: number, overlay_id: string, start: number, end: number, r:
 
 #### `removeOverlay`
 
-Remove a specific overlay by ID
+Remove a specific overlay by its handle
 
 ```typescript
-removeOverlay(buffer_id: number, overlay_id: string): boolean
+removeOverlay(buffer_id: number, handle: string): boolean
 ```
 
 **Parameters:**
@@ -763,22 +779,7 @@ removeOverlay(buffer_id: number, overlay_id: string): boolean
 | Name | Type | Description |
 |------|------|-------------|
 | `buffer_id` | `number` | The buffer ID |
-| `overlay_id` | `string` | The overlay ID to remove |
-
-#### `removeOverlaysByPrefix`
-
-Remove all overlays with IDs starting with a prefix
-
-```typescript
-removeOverlaysByPrefix(buffer_id: number, prefix: string): boolean
-```
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `buffer_id` | `number` | The buffer ID |
-| `prefix` | `string` | The prefix to match overlay IDs against |
+| `handle` | `string` | The overlay handle to remove |
 
 #### `clearAllOverlays`
 

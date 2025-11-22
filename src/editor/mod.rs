@@ -223,8 +223,17 @@ pub struct Editor {
     /// Format: (start_byte_offset, end_byte_offset)
     hover_symbol_range: Option<(usize, usize)>,
 
+    /// Hover symbol overlay handle (for removal)
+    hover_symbol_overlay: Option<crate::overlay::OverlayHandle>,
+
     /// Search state (if search is active)
     search_state: Option<SearchState>,
+
+    /// Search highlight namespace (for efficient bulk removal)
+    search_namespace: crate::overlay::OverlayNamespace,
+
+    /// LSP diagnostic namespace (for filtering and bulk removal)
+    lsp_diagnostic_namespace: crate::overlay::OverlayNamespace,
 
     /// Pending search range that should be reused when the next search is confirmed
     pending_search_range: Option<Range<usize>>,
@@ -519,7 +528,10 @@ impl Editor {
             pending_code_actions_request: None,
             pending_inlay_hints_request: None,
             hover_symbol_range: None,
+            hover_symbol_overlay: None,
             search_state: None,
+            search_namespace: crate::overlay::OverlayNamespace::from_string("search".to_string()),
+            lsp_diagnostic_namespace: crate::overlay::OverlayNamespace::from_string("lsp-diagnostic".to_string()),
             pending_search_range: None,
             interactive_replace_state: None,
             lsp_status: String::new(),
@@ -2273,10 +2285,10 @@ impl Editor {
                         ts_manager.run_hook("prompt_cancelled", hook_args);
                     }
                 }
-                PromptType::LspRename { overlay_id, .. } => {
+                PromptType::LspRename { overlay_handle, .. } => {
                     // Remove the rename overlay when cancelling
                     let remove_overlay_event = crate::event::Event::RemoveOverlay {
-                        overlay_id: overlay_id.clone(),
+                        handle: overlay_handle.clone(),
                     };
                     self.apply_event_to_active_buffer(&remove_overlay_event);
                 }
@@ -3256,7 +3268,7 @@ impl Editor {
             }
             PluginCommand::AddOverlay {
                 buffer_id,
-                overlay_id,
+                namespace,
                 range,
                 color,
                 underline,
@@ -3271,28 +3283,21 @@ impl Editor {
                         underline,
                     };
                     let event = Event::AddOverlay {
-                        overlay_id,
+                        namespace,
                         range,
                         face,
                         priority: 10,
                         message: None,
                     };
                     state.apply(&event);
-                    if let Some(log) = self.event_logs.get_mut(&buffer_id) {
-                        log.append(event);
-                    }
+                    // Note: Overlays are ephemeral, not added to event log for undo/redo
                 }
             }
-            PluginCommand::RemoveOverlay {
-                buffer_id,
-                overlay_id,
-            } => {
+            PluginCommand::RemoveOverlay { buffer_id, handle } => {
                 if let Some(state) = self.buffers.get_mut(&buffer_id) {
-                    let event = Event::RemoveOverlay { overlay_id };
+                    let event = Event::RemoveOverlay { handle };
                     state.apply(&event);
-                    if let Some(log) = self.event_logs.get_mut(&buffer_id) {
-                        log.append(event);
-                    }
+                    // Note: Overlays are ephemeral, not added to event log for undo/redo
                 }
             }
             PluginCommand::SetStatus { message } => {
@@ -3356,16 +3361,15 @@ impl Editor {
                     // 2. This is a plugin-initiated action, not a user edit
                 }
             }
-            PluginCommand::RemoveOverlaysByPrefix { buffer_id, prefix } => {
+            PluginCommand::ClearNamespace {
+                buffer_id,
+                namespace,
+            } => {
                 if let Some(state) = self.buffers.get_mut(&buffer_id) {
-                    // Use the OverlayManager's remove_by_prefix method
                     state
                         .overlays
-                        .remove_by_prefix(&prefix, &mut state.marker_list);
-
-                    // Note: We don't add this to the event log because:
-                    // 1. Clearing overlays doesn't affect undo/redo (overlays are ephemeral)
-                    // 2. This is a plugin-initiated action, not a user edit
+                        .clear_namespace(&namespace, &mut state.marker_list);
+                    // Note: Overlays are ephemeral, not added to event log for undo/redo
                 }
             }
             PluginCommand::AddVirtualText {
@@ -4695,9 +4699,15 @@ impl Editor {
                 end_char
             );
 
+            // Remove previous hover overlay if any
+            if let Some(old_handle) = self.hover_symbol_overlay.take() {
+                let remove_event = crate::event::Event::RemoveOverlay { handle: old_handle };
+                self.apply_event_to_active_buffer(&remove_event);
+            }
+
             // Add overlay to highlight the hovered symbol
             let event = crate::event::Event::AddOverlay {
-                overlay_id: "hover_symbol".to_string(),
+                namespace: None,
                 range: start_byte..end_byte,
                 face: crate::event::OverlayFace::Background {
                     color: (80, 80, 120), // Subtle highlight for hovered symbol
@@ -4706,6 +4716,10 @@ impl Editor {
                 message: None,
             };
             self.apply_event_to_active_buffer(&event);
+            // Store the handle for later removal
+            if let Some(state) = self.buffers.get(&self.active_buffer) {
+                self.hover_symbol_overlay = state.overlays.all().last().map(|o| o.handle.clone());
+            }
         } else {
             // No range provided by LSP, clear any previous highlight
             self.hover_symbol_range = None;
@@ -5741,21 +5755,15 @@ impl Editor {
         let word_text = self.active_state_mut().get_text_range(word_start, word_end);
 
         // Create an overlay to highlight the symbol being renamed
-        let overlay_id = format!("rename_overlay_{}", self.next_lsp_request_id);
-        let event = crate::event::Event::AddOverlay {
-            overlay_id: overlay_id.clone(),
-            range: word_start..word_end,
-            face: crate::event::OverlayFace::Background {
+        let overlay_handle = self.add_overlay(
+            None,
+            word_start..word_end,
+            crate::event::OverlayFace::Background {
                 color: (50, 100, 200), // Blue background for rename
             },
-            priority: 100,
-            message: Some("Renaming".to_string()),
-        };
-
-        // Apply the overlay
-        if let Some(state) = self.buffers.get_mut(&self.active_buffer) {
-            state.apply(&event);
-        }
+            100,
+            Some("Renaming".to_string()),
+        );
 
         // Enter rename mode using the Prompt system
         // Store the rename metadata in the PromptType and pre-fill the input with the current name
@@ -5765,7 +5773,7 @@ impl Editor {
                 original_text: word_text.clone(),
                 start_pos: word_start,
                 end_pos: word_end,
-                overlay_id,
+                overlay_handle,
             },
         );
         // Pre-fill the input with the current name and position cursor at the end
@@ -5776,11 +5784,8 @@ impl Editor {
     }
 
     /// Cancel rename mode - removes overlay if the prompt was for LSP rename
-    fn cancel_rename_overlay(&mut self, overlay_id: &str) {
-        let remove_overlay_event = crate::event::Event::RemoveOverlay {
-            overlay_id: overlay_id.to_string(),
-        };
-        self.apply_event_to_active_buffer(&remove_overlay_event);
+    fn cancel_rename_overlay(&mut self, handle: &crate::overlay::OverlayHandle) {
+        self.remove_overlay(handle.clone());
     }
 
     /// Perform the actual LSP rename request
@@ -5789,10 +5794,10 @@ impl Editor {
         new_name: String,
         original_text: String,
         start_pos: usize,
-        overlay_id: String,
+        overlay_handle: crate::overlay::OverlayHandle,
     ) {
         // Remove the overlay first
-        self.cancel_rename_overlay(&overlay_id);
+        self.cancel_rename_overlay(&overlay_handle);
 
         // Check if the name actually changed
         if new_name == original_text {

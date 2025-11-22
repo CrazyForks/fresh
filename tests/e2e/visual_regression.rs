@@ -288,6 +288,7 @@ fn visual_multicursor() {
 #[test]
 fn visual_lsp_diagnostics() {
     use fresh::event::{Event, OverlayFace};
+    use fresh::overlay::OverlayNamespace;
     use ratatui::style::Color;
 
     let mut harness = EditorTestHarness::new(80, 24).unwrap();
@@ -317,7 +318,7 @@ fn visual_lsp_diagnostics() {
 
     // Error on line 2 (unused variable x)
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-0".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 20..21, // "x" character
         face: OverlayFace::Background {
             color: (60, 20, 20), // Dark red background
@@ -328,7 +329,7 @@ fn visual_lsp_diagnostics() {
 
     // Warning on line 3 (unused variable y)
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-1".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 35..36, // "y" character
         face: OverlayFace::Background {
             color: (60, 50, 0), // Dark yellow background
@@ -451,8 +452,8 @@ fn visual_lsp_rename() {
             .all()
             .iter()
             .filter(|o| {
-                o.id.as_ref()
-                    .is_some_and(|id| id.starts_with("rename_overlay_"))
+                o.namespace.as_ref()
+                    .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
             })
             .collect();
         assert_eq!(overlays.len(), 1, "Should have exactly one rename overlay");
@@ -510,8 +511,8 @@ fn visual_lsp_rename() {
         .all()
         .iter()
         .filter(|o| {
-            o.id.as_ref()
-                .is_some_and(|id| id.starts_with("rename_overlay_"))
+            o.namespace.as_ref()
+                .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
         })
         .collect();
     assert_eq!(
@@ -531,8 +532,8 @@ fn visual_lsp_rename() {
         .all()
         .iter()
         .filter(|o| {
-            o.id.as_ref()
-                .is_some_and(|id| id.starts_with("rename_overlay_"))
+            o.namespace.as_ref()
+                .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
         })
         .collect();
     assert_eq!(
@@ -563,8 +564,8 @@ fn visual_lsp_rename() {
         .all()
         .iter()
         .filter(|o| {
-            o.id.as_ref()
-                .is_some_and(|id| id.starts_with("rename_overlay_"))
+            o.namespace.as_ref()
+                .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
         })
         .collect();
     assert_eq!(
@@ -772,8 +773,8 @@ fn test_lsp_rename_cancel_restores_original() {
             .all()
             .iter()
             .filter(|o| {
-                o.id.as_ref()
-                    .is_some_and(|id| id.starts_with("rename_overlay_"))
+                o.namespace.as_ref()
+                    .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
             })
             .collect();
         assert_eq!(overlays.len(), 1, "Should have exactly one rename overlay");
@@ -818,8 +819,8 @@ fn test_lsp_rename_cancel_restores_original() {
         .all()
         .iter()
         .filter(|o| {
-            o.id.as_ref()
-                .is_some_and(|id| id.starts_with("rename_overlay_"))
+            o.namespace.as_ref()
+                .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
         })
         .collect();
     assert_eq!(
@@ -850,8 +851,8 @@ fn test_lsp_rename_cancel_restores_original() {
         .all()
         .iter()
         .filter(|o| {
-            o.id.as_ref()
-                .is_some_and(|id| id.starts_with("rename_overlay_"))
+            o.namespace.as_ref()
+                .is_some_and(|ns| ns.as_str().starts_with("rename_overlay"))
         })
         .collect();
     assert_eq!(

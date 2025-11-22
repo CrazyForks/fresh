@@ -960,13 +960,13 @@ impl SplitRenderer {
             .map(|(overlay, range)| (overlay.clone(), range))
             .collect::<Vec<_>>();
 
+        // Use the lsp-diagnostic namespace to identify diagnostic overlays
+        let diagnostic_ns = crate::lsp_diagnostics::lsp_diagnostic_namespace();
         let diagnostic_lines: HashSet<usize> = viewport_overlays
             .iter()
             .filter_map(|(overlay, range)| {
-                if let Some(id) = &overlay.id {
-                    if id.starts_with("lsp-diagnostic-") {
-                        return Some(state.buffer.get_line_number(range.start));
-                    }
+                if overlay.namespace.as_ref() == Some(&diagnostic_ns) {
+                    return Some(state.buffer.get_line_number(range.start));
                 }
                 None
             })

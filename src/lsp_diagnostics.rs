@@ -1,4 +1,4 @@
-use crate::overlay::OverlayFace;
+use crate::overlay::{Overlay, OverlayFace, OverlayNamespace};
 use crate::state::EditorState;
 ///! LSP diagnostics display
 ///!
@@ -10,6 +10,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::Mutex;
+
+/// Namespace for all LSP diagnostic overlays
+pub fn lsp_diagnostic_namespace() -> OverlayNamespace {
+    OverlayNamespace::from_string("lsp-diagnostic".to_string())
+}
 
 /// Cache for diagnostic hash to avoid redundant updates
 /// Using a global static with Mutex for simplicity - could be moved to EditorState later
@@ -136,104 +141,47 @@ pub fn diagnostic_to_overlay(
     Some((start_byte..end_byte, face, priority))
 }
 
-/// Create a stable ID for a diagnostic based on its content
-/// This allows us to track which diagnostics have changed
-fn diagnostic_id(diagnostic: &Diagnostic) -> String {
-    // Create an ID based on position and message
-    // Format: "lsp-diagnostic-L{line}C{col}-{hash}"
-    let line = diagnostic.range.start.line;
-    let col = diagnostic.range.start.character;
-
-    // Simple hash of the message (first 8 chars is enough for uniqueness in most cases)
-    let msg_hash: String = diagnostic.message.chars().take(8).collect();
-
-    format!("lsp-diagnostic-L{}C{}-{}", line, col, msg_hash)
-}
-
 /// Apply LSP diagnostics to editor state as overlays
 ///
 /// This function:
-/// 1. Compares incoming diagnostics with existing overlays
-/// 2. Removes overlays for diagnostics that no longer exist
-/// 3. Adds overlays for new diagnostics
-/// 4. Keeps overlays for unchanged diagnostics (incremental update)
-/// 5. Updates margin indicators
+/// 1. Clears all existing LSP diagnostic overlays (using namespace)
+/// 2. Adds overlays for all current diagnostics
 pub fn apply_diagnostics_to_state(
     state: &mut EditorState,
     diagnostics: &[Diagnostic],
     theme: &crate::theme::Theme,
 ) {
-    use crate::overlay::Overlay;
-    use std::collections::HashSet;
+    let ns = lsp_diagnostic_namespace();
 
-    // Build set of incoming diagnostic IDs
-    let incoming_ids: HashSet<String> = diagnostics.iter().map(|d| diagnostic_id(d)).collect();
+    // Clear all existing LSP diagnostic overlays using namespace
+    state.overlays.clear_namespace(&ns, &mut state.marker_list);
 
-    // Find existing diagnostic overlay IDs
-    let existing_ids: Vec<String> = state
-        .overlays
-        .all()
-        .iter()
-        .filter_map(|o| {
-            o.id.as_ref().and_then(|id| {
-                if id.starts_with("lsp-diagnostic-") {
-                    Some(id.clone())
-                } else {
-                    None
-                }
-            })
-        })
-        .collect();
-
-    // Remove overlays for diagnostics that are no longer present
-    let mut removed_count = 0;
-    for id in &existing_ids {
-        if !incoming_ids.contains(id) {
-            state.overlays.remove_by_id(id, &mut state.marker_list);
-            removed_count += 1;
-        }
-    }
-
-    // Convert existing IDs to a set for fast lookup
-    let existing_id_set: HashSet<String> = existing_ids.into_iter().collect();
-
-    // Add new diagnostics (only those that don't already exist)
+    // Add overlays for all current diagnostics
     let mut added_count = 0;
-
-    // Add new diagnostic overlays (skip if already exists)
-    // The line anchor system creates anchors on-demand, so no pre-population needed
     for diagnostic in diagnostics {
-        let overlay_id = diagnostic_id(diagnostic);
-
-        // Skip if this diagnostic already has an overlay
-        if existing_id_set.contains(&overlay_id) {
-            continue;
-        }
-
-        // This is a new diagnostic, create an overlay for it
         if let Some((range, face, priority)) =
             diagnostic_to_overlay(diagnostic, &state.buffer, theme)
         {
             let message = diagnostic.message.clone();
 
-            let overlay = Overlay::with_id(&mut state.marker_list, range, face, overlay_id)
-                .with_priority_value(priority)
-                .with_message(message);
+            let overlay = Overlay::with_namespace(
+                &mut state.marker_list,
+                range,
+                face,
+                ns.clone(),
+            )
+            .with_priority_value(priority)
+            .with_message(message);
 
             state.overlays.add(overlay);
             added_count += 1;
         }
     }
 
-    // Log incremental update stats
-    // Note: Margin indicators are now computed dynamically during rendering
-    // from overlay marker positions, eliminating sync issues with undo/redo
-    if added_count > 0 || removed_count > 0 {
+    if added_count > 0 {
         tracing::debug!(
-            "Incremental diagnostic update: added={}, removed={}, kept={}",
-            added_count,
-            removed_count,
-            diagnostics.len() - added_count
+            "Applied {} diagnostic overlays",
+            added_count
         );
     }
 }

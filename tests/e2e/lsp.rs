@@ -132,6 +132,7 @@ fn test_lsp_completion_replaces_word() -> std::io::Result<()> {
 #[test]
 fn test_lsp_diagnostics_display() -> std::io::Result<()> {
     use fresh::event::{Event, OverlayFace};
+    use fresh::overlay::OverlayNamespace;
 
     let mut harness = EditorTestHarness::new(80, 24)?;
 
@@ -142,7 +143,7 @@ fn test_lsp_diagnostics_display() -> std::io::Result<()> {
     // Manually add a diagnostic overlay (simulating what LSP would do)
     let state = harness.editor_mut().active_state_mut();
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-test".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 4..5, // "x"
         face: OverlayFace::Background {
             color: (40, 0, 0), // Dark red background
@@ -239,6 +240,7 @@ fn test_lsp_completion_popup() -> std::io::Result<()> {
 #[test]
 fn test_lsp_diagnostics_status_bar() -> std::io::Result<()> {
     use fresh::event::{Event, OverlayFace};
+    use fresh::overlay::OverlayNamespace;
 
     let mut harness = EditorTestHarness::new(80, 24)?;
 
@@ -249,7 +251,7 @@ fn test_lsp_diagnostics_status_bar() -> std::io::Result<()> {
     // Add error diagnostic
     let state = harness.editor_mut().active_state_mut();
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-error1".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 4..5,
         face: OverlayFace::Background { color: (40, 0, 0) },
         priority: 100, // Error priority
@@ -258,7 +260,7 @@ fn test_lsp_diagnostics_status_bar() -> std::io::Result<()> {
 
     // Add warning diagnostic
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-warning1".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 15..16,
         face: OverlayFace::Background { color: (40, 40, 0) },
         priority: 50, // Warning priority
@@ -285,6 +287,7 @@ fn test_lsp_diagnostics_status_bar() -> std::io::Result<()> {
 #[test]
 fn test_lsp_clear_diagnostics() -> std::io::Result<()> {
     use fresh::event::{Event, OverlayFace};
+    use fresh::overlay::OverlayNamespace;
 
     let mut harness = EditorTestHarness::new(80, 24)?;
 
@@ -295,7 +298,7 @@ fn test_lsp_clear_diagnostics() -> std::io::Result<()> {
     // Add diagnostic
     let state = harness.editor_mut().active_state_mut();
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-test".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 4..5,
         face: OverlayFace::Background { color: (40, 0, 0) },
         priority: 100,
@@ -308,10 +311,10 @@ fn test_lsp_clear_diagnostics() -> std::io::Result<()> {
     let screen = harness.screen_to_string();
     assert!(screen.contains("E:1"), "Expected error count in status bar");
 
-    // Clear diagnostics
+    // Clear diagnostics using namespace
     let state = harness.editor_mut().active_state_mut();
-    state.apply(&Event::RemoveOverlay {
-        overlay_id: "lsp-diagnostic-test".to_string(),
+    state.apply(&Event::ClearNamespace {
+        namespace: OverlayNamespace::from_string("lsp-diagnostic".to_string()),
     });
 
     harness.render()?;

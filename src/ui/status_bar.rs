@@ -160,16 +160,16 @@ impl StatusBarRenderer {
         let mut warning_count = 0;
         let mut info_count = 0;
 
+        // Use the lsp-diagnostic namespace to identify diagnostic overlays
+        let diagnostic_ns = crate::lsp_diagnostics::lsp_diagnostic_namespace();
         for overlay in diagnostics {
-            if let Some(id) = &overlay.id {
-                if id.starts_with("lsp-diagnostic-") {
-                    // Check priority to determine severity
-                    // Based on lsp_diagnostics.rs: Error=100, Warning=50, Info=30, Hint=10
-                    match overlay.priority {
-                        100 => error_count += 1,
-                        50 => warning_count += 1,
-                        _ => info_count += 1,
-                    }
+            if overlay.namespace.as_ref() == Some(&diagnostic_ns) {
+                // Check priority to determine severity
+                // Based on lsp_diagnostics.rs: Error=100, Warning=50, Info=30, Hint=10
+                match overlay.priority {
+                    100 => error_count += 1,
+                    50 => warning_count += 1,
+                    _ => info_count += 1,
                 }
             }
         }

@@ -4,6 +4,7 @@ mod common;
 
 use fresh::{
     event::{CursorId, Event, EventLog},
+    overlay::{OverlayHandle, OverlayNamespace},
     state::EditorState,
 };
 
@@ -313,9 +314,9 @@ fn test_overlay_events() {
         cursor_id: CursorId(0),
     });
 
-    // Add an error overlay
+    // Add an error overlay with namespace
     state.apply(&Event::AddOverlay {
-        overlay_id: "error1".to_string(),
+        namespace: Some(OverlayNamespace::from_string("error".to_string())),
         range: 0..5,
         face: OverlayFace::Underline {
             color: (255, 0, 0),
@@ -328,11 +329,14 @@ fn test_overlay_events() {
     // Check overlay was added
     let overlays_at_pos = state.overlays.at_position(2, &state.marker_list);
     assert_eq!(overlays_at_pos.len(), 1);
-    assert_eq!(overlays_at_pos[0].id, Some("error1".to_string()));
+    assert_eq!(
+        overlays_at_pos[0].namespace,
+        Some(OverlayNamespace::from_string("error".to_string()))
+    );
 
     // Add a warning overlay with lower priority
     state.apply(&Event::AddOverlay {
-        overlay_id: "warning1".to_string(),
+        namespace: Some(OverlayNamespace::from_string("warning".to_string())),
         range: 3..8,
         face: OverlayFace::Underline {
             color: (255, 255, 0),
@@ -348,15 +352,18 @@ fn test_overlay_events() {
     assert_eq!(overlays_at_4[0].priority, 50); // Warning (lower priority) comes first
     assert_eq!(overlays_at_4[1].priority, 100); // Error (higher priority) comes second
 
-    // Remove error overlay
-    state.apply(&Event::RemoveOverlay {
-        overlay_id: "error1".to_string(),
+    // Remove error overlay using namespace
+    state.apply(&Event::ClearNamespace {
+        namespace: OverlayNamespace::from_string("error".to_string()),
     });
 
     // Now position 4 should only have warning
     let overlays_at_4 = state.overlays.at_position(4, &state.marker_list);
     assert_eq!(overlays_at_4.len(), 1);
-    assert_eq!(overlays_at_4[0].id, Some("warning1".to_string()));
+    assert_eq!(
+        overlays_at_4[0].namespace,
+        Some(OverlayNamespace::from_string("warning".to_string()))
+    );
 
     // Clear all overlays
     state.apply(&Event::ClearOverlays);
@@ -454,7 +461,7 @@ fn test_overlay_undo_redo() {
     state.apply(&event1);
 
     let event2 = Event::AddOverlay {
-        overlay_id: "test".to_string(),
+        namespace: Some(OverlayNamespace::from_string("test".to_string())),
         range: 0..5,
         face: OverlayFace::Underline {
             color: (255, 0, 0),
@@ -573,7 +580,7 @@ fn test_overlay_priority_layering() {
 
     // Add low priority overlay (hint)
     state.apply(&Event::AddOverlay {
-        overlay_id: "hint".to_string(),
+        namespace: Some(OverlayNamespace::from_string("hint".to_string())),
         range: 0..5,
         face: OverlayFace::Underline {
             color: (128, 128, 128),
@@ -585,7 +592,7 @@ fn test_overlay_priority_layering() {
 
     // Add high priority overlay (error) overlapping
     state.apply(&Event::AddOverlay {
-        overlay_id: "error".to_string(),
+        namespace: Some(OverlayNamespace::from_string("error".to_string())),
         range: 2..7,
         face: OverlayFace::Underline {
             color: (255, 0, 0),
@@ -601,9 +608,15 @@ fn test_overlay_priority_layering() {
     assert_eq!(overlays[0].priority, 10); // Hint (lower priority first)
     assert_eq!(overlays[1].priority, 100); // Error (higher priority second)
 
-    // Verify IDs
-    assert_eq!(overlays[0].id, Some("hint".to_string()));
-    assert_eq!(overlays[1].id, Some("error".to_string()));
+    // Verify namespaces
+    assert_eq!(
+        overlays[0].namespace,
+        Some(OverlayNamespace::from_string("hint".to_string()))
+    );
+    assert_eq!(
+        overlays[1].namespace,
+        Some(OverlayNamespace::from_string("error".to_string()))
+    );
 }
 
 /// E2E test: Verify diagnostic overlays are visually rendered with correct colors
@@ -625,7 +638,7 @@ fn test_diagnostic_overlay_visual_rendering() {
     // since that's what OverlayFace uses (u8, u8, u8) tuples
     let state = harness.editor_mut().active_state_mut();
     state.apply(&Event::AddOverlay {
-        overlay_id: "lsp-diagnostic-0".to_string(),
+        namespace: Some(OverlayNamespace::from_string("lsp-diagnostic".to_string())),
         range: 4..5, // "x"
         face: OverlayFace::Underline {
             color: (255, 0, 0), // Red as RGB
@@ -682,6 +695,7 @@ fn test_diagnostic_overlay_visual_rendering() {
 /// Comprehensive tests for Event::inverse()
 mod event_inverse_tests {
     use fresh::event::{CursorId, Event, OverlayFace, UnderlineStyle};
+    use fresh::overlay::{OverlayHandle, OverlayNamespace};
 
     #[test]
     fn test_insert_inverse() {
@@ -816,9 +830,10 @@ mod event_inverse_tests {
     }
 
     #[test]
-    fn test_add_overlay_inverse() {
+    fn test_add_overlay_no_inverse() {
+        // Overlays are ephemeral decorations, not undoable
         let event = Event::AddOverlay {
-            overlay_id: "test-overlay".to_string(),
+            namespace: Some(OverlayNamespace::from_string("test-overlay".to_string())),
             range: 0..10,
             face: OverlayFace::Underline {
                 color: (255, 0, 0),
@@ -828,23 +843,17 @@ mod event_inverse_tests {
             message: Some("error".to_string()),
         };
 
-        let inverse = event.inverse().expect("AddOverlay should have inverse");
-
-        match inverse {
-            Event::RemoveOverlay { overlay_id } => {
-                assert_eq!(overlay_id, "test-overlay");
-            }
-            _ => panic!("AddOverlay inverse should be RemoveOverlay"),
-        }
+        // AddOverlay is ephemeral and has no inverse
+        assert!(event.inverse().is_none());
     }
 
     #[test]
     fn test_remove_overlay_no_inverse() {
         let event = Event::RemoveOverlay {
-            overlay_id: "test".to_string(),
+            handle: OverlayHandle::from_string("test".to_string()),
         };
 
-        // RemoveOverlay doesn't have inverse because we don't store the overlay data
+        // RemoveOverlay is ephemeral and has no inverse
         assert!(event.inverse().is_none());
     }
 

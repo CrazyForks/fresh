@@ -1,6 +1,6 @@
 // TypeScript TODO Highlighter Plugin
 // Highlights TODO, FIXME, XXX keywords in source code
-// This is a port of the Lua plugin to demonstrate the TypeScript plugin system
+// Uses namespace-based overlay management for efficient batch operations
 
 interface HighlightConfig {
   enabled: boolean;
@@ -22,13 +22,15 @@ const config: HighlightConfig = {
   ],
 };
 
+// Namespace for all TODO highlighter overlays
+const NAMESPACE = "todo";
+
 // Track which buffers need their overlays refreshed (content changed)
 const dirtyBuffers = new Set<number>();
 
 // Process a single line for keyword highlighting
 function highlightLine(
   bufferId: number,
-  lineNumber: number,
   byteStart: number,
   content: string
 ): void {
@@ -47,11 +49,11 @@ function highlightLine(
       if (isWordStart && isWordEnd) {
         const absoluteStart = byteStart + pos;
         const absoluteEnd = absoluteStart + keyword.word.length;
-        const overlayId = `todo-${bufferId}-${lineNumber}-${pos}`;
 
+        // Add overlay with namespace for efficient batch removal
         editor.addOverlay(
           bufferId,
-          overlayId,
+          NAMESPACE,
           absoluteStart,
           absoluteEnd,
           keyword.color[0],
@@ -66,9 +68,9 @@ function highlightLine(
   }
 }
 
-// Clear highlights for a buffer
+// Clear highlights for a buffer using namespace
 function clearHighlights(bufferId: number): void {
-  editor.removeOverlaysByPrefix(bufferId, "todo-");
+  editor.clearNamespace(bufferId, NAMESPACE);
 }
 
 // Handle render-start events (only clear overlays if buffer content changed)
@@ -96,7 +98,7 @@ globalThis.onLinesChanged = function(data: {
 
   // Process all changed lines
   for (const line of data.lines) {
-    highlightLine(data.buffer_id, line.line_number, line.byte_start, line.content);
+    highlightLine(data.buffer_id, line.byte_start, line.content);
   }
 };
 

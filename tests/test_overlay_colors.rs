@@ -2,6 +2,7 @@
 use fresh::config::LARGE_FILE_THRESHOLD_BYTES;
 use fresh::event::CursorId;
 use fresh::event::{Event, OverlayFace as EventOverlayFace};
+use fresh::overlay::OverlayNamespace;
 use fresh::state::EditorState;
 
 #[test]
@@ -22,7 +23,7 @@ fn test_overlay_background_color_direct() {
 
     // Directly add an overlay with orange background
     state.apply(&Event::AddOverlay {
-        overlay_id: "test_todo".to_string(),
+        namespace: Some(OverlayNamespace::from_string("test_todo".to_string())),
         range: 3..7, // "TODO"
         face: EventOverlayFace::Background {
             color: (255, 165, 0), // Orange

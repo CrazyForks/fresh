@@ -96,11 +96,11 @@ globalThis.bookmark_add = function (): void {
 
   bookmarks.set(id, bookmark);
 
-  // Add visual indicator
+  // Add visual indicator with bookmark namespace
   const bufferId = editor.getActiveBufferId();
   editor.addOverlay(
     bufferId,
-    `bookmark-${id}`,
+    "bookmark",  // namespace for all bookmarks
     position,
     position + 1,
     0, // Red
@@ -188,8 +188,8 @@ globalThis.bookmark_goto_split = function (): void {
 globalThis.bookmark_clear = function (): void {
   const bufferId = editor.getActiveBufferId();
 
-  // Remove all bookmark overlays
-  editor.removeOverlaysByPrefix(bufferId, "bookmark-");
+  // Remove all bookmark overlays using namespace
+  editor.clearNamespace(bufferId, "bookmark");
 
   const count = bookmarks.size;
   bookmarks.clear();

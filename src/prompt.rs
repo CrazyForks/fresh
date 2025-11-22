@@ -32,12 +32,12 @@ pub enum PromptType {
     /// The string identifier is used to filter hooks in plugin code
     Plugin { custom_type: String },
     /// LSP Rename operation
-    /// Stores the original text, start/end positions in buffer, and overlay ID
+    /// Stores the original text, start/end positions in buffer, and overlay handle
     LspRename {
         original_text: String,
         start_pos: usize,
         end_pos: usize,
-        overlay_id: String,
+        overlay_handle: crate::overlay::OverlayHandle,
     },
     /// Record a macro - prompts for register (0-9)
     RecordMacro,

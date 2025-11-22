@@ -48,9 +48,10 @@ globalThis.highlight_region = function (): void {
   const start = Math.max(0, cursorPos - 5);
   const end = cursorPos + 5;
 
+  // Use namespace "demo" for batch operations
   const success = editor.addOverlay(
     bufferId,
-    "demo-highlight",
+    "demo",  // namespace
     start,
     end,
     255, // Red
@@ -67,7 +68,8 @@ globalThis.highlight_region = function (): void {
 // Global action: Remove highlight
 globalThis.clear_highlight = function (): void {
   const bufferId = editor.getActiveBufferId();
-  const success = editor.removeOverlay(bufferId, "demo-highlight");
+  // Clear all overlays in the "demo" namespace
+  const success = editor.clearNamespace(bufferId, "demo");
   if (success) {
     editor.setStatus("Cleared highlight");
   }

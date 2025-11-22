@@ -508,27 +508,33 @@ impl Editor {
     /// Add an overlay for decorations (underlines, highlights, etc.)
     pub fn add_overlay(
         &mut self,
-        overlay_id: String,
+        namespace: Option<crate::overlay::OverlayNamespace>,
         range: Range<usize>,
         face: crate::event::OverlayFace,
         priority: i32,
         message: Option<String>,
-    ) {
+    ) -> crate::overlay::OverlayHandle {
         let event = Event::AddOverlay {
-            overlay_id,
+            namespace,
             range,
             face,
             priority,
             message,
         };
-        self.active_event_log_mut().append(event.clone());
         self.apply_event_to_active_buffer(&event);
+        // Return the handle of the last added overlay
+        let state = self.active_state();
+        state
+            .overlays
+            .all()
+            .last()
+            .map(|o| o.handle.clone())
+            .unwrap_or_else(crate::overlay::OverlayHandle::new)
     }
 
-    /// Remove an overlay by ID
-    pub fn remove_overlay(&mut self, overlay_id: String) {
-        let event = Event::RemoveOverlay { overlay_id };
-        self.active_event_log_mut().append(event.clone());
+    /// Remove an overlay by handle
+    pub fn remove_overlay(&mut self, handle: crate::overlay::OverlayHandle) {
+        let event = Event::RemoveOverlay { handle };
         self.apply_event_to_active_buffer(&event);
     }
 
@@ -562,13 +568,11 @@ impl Editor {
         self.apply_event_to_active_buffer(&event);
 
         // Clear hover symbol highlight if present
-        if self.hover_symbol_range.is_some() {
-            self.hover_symbol_range = None;
-            let remove_overlay_event = crate::event::Event::RemoveOverlay {
-                overlay_id: "hover_symbol".to_string(),
-            };
+        if let Some(handle) = self.hover_symbol_overlay.take() {
+            let remove_overlay_event = crate::event::Event::RemoveOverlay { handle };
             self.apply_event_to_active_buffer(&remove_overlay_event);
         }
+        self.hover_symbol_range = None;
     }
 
     /// Dismiss transient popups (Hover, Signature Help) if present
@@ -877,25 +881,9 @@ impl Editor {
 
     /// Clear all search highlights from the active buffer
     pub(super) fn clear_search_highlights(&mut self) {
+        let ns = self.search_namespace.clone();
         let state = self.active_state_mut();
-        let overlay_ids: Vec<String> = state
-            .overlays
-            .all()
-            .iter()
-            .filter_map(|o| {
-                o.id.as_ref().and_then(|id| {
-                    if id.starts_with("search_highlight_") || id.starts_with("search_match_") {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect();
-
-        for id in overlay_ids {
-            state.overlays.remove_by_id(&id, &mut state.marker_list);
-        }
+        state.overlays.clear_namespace(&ns, &mut state.marker_list);
 
         // Also clear search state
         self.search_state = None;
@@ -914,28 +902,12 @@ impl Editor {
         let search_bg = self.theme.search_match_bg;
         let search_fg = self.theme.search_match_fg;
         let case_sensitive = self.search_case_sensitive;
+        let ns = self.search_namespace.clone();
 
         let state = self.active_state_mut();
 
         // Clear any existing search highlights
-        let overlay_ids: Vec<String> = state
-            .overlays
-            .all()
-            .iter()
-            .filter_map(|o| {
-                o.id.as_ref().and_then(|id| {
-                    if id.starts_with("search_highlight_") {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect();
-
-        for id in overlay_ids {
-            state.overlays.remove_by_id(&id, &mut state.marker_list);
-        }
+        state.overlays.clear_namespace(&ns, &mut state.marker_list);
 
         // Get the visible viewport range
         let viewport = &state.viewport;
@@ -976,15 +948,14 @@ impl Editor {
             let absolute_pos = visible_start + start + pos;
 
             // Add overlay for this match
-            let overlay_id = format!("search_highlight_{}", match_count);
             let search_style = ratatui::style::Style::default().fg(search_fg).bg(search_bg);
-            let overlay = crate::overlay::Overlay::with_id(
+            let overlay = crate::overlay::Overlay::with_namespace(
                 &mut state.marker_list,
                 absolute_pos..(absolute_pos + query.len()),
                 crate::overlay::OverlayFace::Style {
                     style: search_style,
                 },
-                overlay_id,
+                ns.clone(),
             )
             .with_priority_value(10); // Priority - above syntax highlighting
 
@@ -1307,25 +1278,9 @@ impl Editor {
         self.search_state = None;
 
         // Clear any search highlight overlays
+        let ns = self.search_namespace.clone();
         let state = self.active_state_mut();
-        let overlay_ids: Vec<String> = state
-            .overlays
-            .all()
-            .iter()
-            .filter_map(|o| {
-                o.id.as_ref().and_then(|id| {
-                    if id.starts_with("search_highlight_") || id.starts_with("search_match_") {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect();
-
-        for id in overlay_ids {
-            state.overlays.remove_by_id(&id, &mut state.marker_list);
-        }
+        state.overlays.clear_namespace(&ns, &mut state.marker_list);
 
         // Set status message
         self.set_status_message(format!(
@@ -1661,25 +1616,9 @@ impl Editor {
         self.interactive_replace_state = None;
 
         // Clear search highlights
+        let ns = self.search_namespace.clone();
         let state = self.active_state_mut();
-        let overlay_ids: Vec<String> = state
-            .overlays
-            .all()
-            .iter()
-            .filter_map(|o| {
-                o.id.as_ref().and_then(|id| {
-                    if id.starts_with("search_highlight_") || id.starts_with("search_match_") {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect();
-
-        for id in overlay_ids {
-            state.overlays.remove_by_id(&id, &mut state.marker_list);
-        }
+        state.overlays.clear_namespace(&ns, &mut state.marker_list);
 
         self.set_status_message(format!(
             "Replaced {} occurrence{}",
@@ -2144,6 +2083,7 @@ impl Editor {
 
     /// Jump to next error/diagnostic
     pub(super) fn jump_to_next_error(&mut self) {
+        let diagnostic_ns = self.lsp_diagnostic_namespace.clone();
         let state = self.active_state_mut();
         let cursor_pos = state.cursors.primary().position;
         let cursor_id = state.cursors.primary_id();
@@ -2155,13 +2095,8 @@ impl Editor {
             .all()
             .iter()
             .filter_map(|overlay| {
-                // Only consider LSP diagnostics
-                if overlay
-                    .id
-                    .as_ref()
-                    .map(|id| id.starts_with("lsp-diagnostic-"))
-                    .unwrap_or(false)
-                {
+                // Only consider LSP diagnostics (those in the diagnostic namespace)
+                if overlay.namespace.as_ref() == Some(&diagnostic_ns) {
                     Some(overlay.range(&state.marker_list).start)
                 } else {
                     None
@@ -2202,13 +2137,7 @@ impl Editor {
             let state = self.active_state();
             if let Some(msg) = state.overlays.all().iter().find_map(|overlay| {
                 let range = overlay.range(&state.marker_list);
-                if range.start == new_pos
-                    && overlay
-                        .id
-                        .as_ref()
-                        .map(|id| id.starts_with("lsp-diagnostic-"))
-                        .unwrap_or(false)
-                {
+                if range.start == new_pos && overlay.namespace.as_ref() == Some(&diagnostic_ns) {
                     overlay.message.clone()
                 } else {
                     None
@@ -2221,6 +2150,7 @@ impl Editor {
 
     /// Jump to previous error/diagnostic
     pub(super) fn jump_to_previous_error(&mut self) {
+        let diagnostic_ns = self.lsp_diagnostic_namespace.clone();
         let state = self.active_state_mut();
         let cursor_pos = state.cursors.primary().position;
         let cursor_id = state.cursors.primary_id();
@@ -2232,13 +2162,8 @@ impl Editor {
             .all()
             .iter()
             .filter_map(|overlay| {
-                // Only consider LSP diagnostics
-                if overlay
-                    .id
-                    .as_ref()
-                    .map(|id| id.starts_with("lsp-diagnostic-"))
-                    .unwrap_or(false)
-                {
+                // Only consider LSP diagnostics (those in the diagnostic namespace)
+                if overlay.namespace.as_ref() == Some(&diagnostic_ns) {
                     Some(overlay.range(&state.marker_list).start)
                 } else {
                     None
@@ -2280,13 +2205,7 @@ impl Editor {
             let state = self.active_state();
             if let Some(msg) = state.overlays.all().iter().find_map(|overlay| {
                 let range = overlay.range(&state.marker_list);
-                if range.start == new_pos
-                    && overlay
-                        .id
-                        .as_ref()
-                        .map(|id| id.starts_with("lsp-diagnostic-"))
-                        .unwrap_or(false)
-                {
+                if range.start == new_pos && overlay.namespace.as_ref() == Some(&diagnostic_ns) {
                     overlay.message.clone()
                 } else {
                     None

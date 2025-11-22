@@ -390,12 +390,12 @@ class MarkdownParser {
 // Apply styling overlays based on parsed tokens
 function applyMarkdownStyling(bufferId: number, tokens: Token[]): void {
   // Clear existing markdown overlays
-  editor.removeOverlaysByPrefix(bufferId, "md:");
+  editor.clearNamespace(bufferId, "md");
 
   for (const token of tokens) {
     let color: [number, number, number] | null = null;
     let underline = false;
-    let overlayId = `md:${token.type}:${token.start}`;
+    let overlayId = "md";
 
     switch (token.type) {
       case TokenType.Header1:
@@ -430,14 +430,14 @@ function applyMarkdownStyling(bufferId: number, tokens: Token[]): void {
         if (boldMatch) {
           const markerLen = boldMatch[1].length;
           // Subdued markers
-          editor.addOverlay(bufferId, `md:bold-start:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.start, token.start + markerLen,
             COLORS.boldMarker[0], COLORS.boldMarker[1], COLORS.boldMarker[2], false, false, false);
-          editor.addOverlay(bufferId, `md:bold-end:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.end - markerLen, token.end,
             COLORS.boldMarker[0], COLORS.boldMarker[1], COLORS.boldMarker[2], false, false, false);
           // Bold content with bold=true
-          editor.addOverlay(bufferId, `md:bold-content:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.start + markerLen, token.end - markerLen,
             COLORS.bold[0], COLORS.bold[1], COLORS.bold[2], false, true, false);
         } else {
@@ -451,14 +451,14 @@ function applyMarkdownStyling(bufferId: number, tokens: Token[]): void {
         if (italicMatch) {
           const markerLen = 1;
           // Subdued markers
-          editor.addOverlay(bufferId, `md:italic-start:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.start, token.start + markerLen,
             COLORS.italicMarker[0], COLORS.italicMarker[1], COLORS.italicMarker[2], false, false, false);
-          editor.addOverlay(bufferId, `md:italic-end:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.end - markerLen, token.end,
             COLORS.italicMarker[0], COLORS.italicMarker[1], COLORS.italicMarker[2], false, false, false);
           // Italic content with italic=true
-          editor.addOverlay(bufferId, `md:italic-content:${token.start}`,
+          editor.addOverlay(bufferId, "md",
             token.start + markerLen, token.end - markerLen,
             COLORS.italic[0], COLORS.italic[1], COLORS.italic[2], false, false, true);
         } else {
@@ -483,7 +483,7 @@ function applyMarkdownStyling(bufferId: number, tokens: Token[]): void {
           const bulletEnd = token.start + bulletMatch[0].length;
           editor.addOverlay(
             bufferId,
-            `md:bullet:${token.start}`,
+            "md",
             token.start,
             bulletEnd,
             COLORS.listBullet[0],
@@ -501,7 +501,7 @@ function applyMarkdownStyling(bufferId: number, tokens: Token[]): void {
           const checkboxEnd = token.start + checkboxMatch[0].length;
           editor.addOverlay(
             bufferId,
-            `md:checkbox:${token.start}`,
+            "md",
             token.start,
             checkboxEnd,
             COLORS.checkbox[0],
@@ -543,7 +543,7 @@ function highlightLine(
   if (headerMatch) {
     editor.addOverlay(
       bufferId,
-      `md:header:${lineNumber}`,
+      "md",
       byteStart,
       byteStart + content.length,
       COLORS.header[0], COLORS.header[1], COLORS.header[2],
@@ -556,7 +556,7 @@ function highlightLine(
   if (trimmed.startsWith('```')) {
     editor.addOverlay(
       bufferId,
-      `md:fence:${lineNumber}`,
+      "md",
       byteStart,
       byteStart + content.length,
       COLORS.fence[0], COLORS.fence[1], COLORS.fence[2],
@@ -569,7 +569,7 @@ function highlightLine(
   if (trimmed.startsWith('>')) {
     editor.addOverlay(
       bufferId,
-      `md:quote:${lineNumber}`,
+      "md",
       byteStart,
       byteStart + content.length,
       COLORS.quote[0], COLORS.quote[1], COLORS.quote[2],
@@ -582,7 +582,7 @@ function highlightLine(
   if (trimmed.match(/^[-*_]{3,}$/)) {
     editor.addOverlay(
       bufferId,
-      `md:hr:${lineNumber}`,
+      "md",
       byteStart,
       byteStart + content.length,
       COLORS.quote[0], COLORS.quote[1], COLORS.quote[2],
@@ -598,7 +598,7 @@ function highlightLine(
     const bulletEnd = bulletStart + 1;
     editor.addOverlay(
       bufferId,
-      `md:bullet:${lineNumber}`,
+      "md",
       bulletStart,
       bulletEnd,
       COLORS.listBullet[0], COLORS.listBullet[1], COLORS.listBullet[2],
@@ -613,7 +613,7 @@ function highlightLine(
     const numEnd = numStart + orderedMatch[2].length;
     editor.addOverlay(
       bufferId,
-      `md:ordnum:${lineNumber}`,
+      "md",
       numStart,
       numEnd,
       COLORS.listBullet[0], COLORS.listBullet[1], COLORS.listBullet[2],
@@ -628,7 +628,7 @@ function highlightLine(
     const checkEnd = checkStart + checkMatch[2].length;
     editor.addOverlay(
       bufferId,
-      `md:checkbox:${lineNumber}`,
+      "md",
       checkStart,
       checkEnd,
       COLORS.checkbox[0], COLORS.checkbox[1], COLORS.checkbox[2],
@@ -644,7 +644,7 @@ function highlightLine(
   while ((match = codeRegex.exec(content)) !== null) {
     editor.addOverlay(
       bufferId,
-      `md:code:${lineNumber}:${match.index}`,
+      "md",
       byteStart + match.index,
       byteStart + match.index + match[0].length,
       COLORS.code[0], COLORS.code[1], COLORS.code[2],
@@ -661,14 +661,14 @@ function highlightLine(
     // Subdued markers
     editor.addOverlay(
       bufferId,
-      `md:bold-start:${lineNumber}:${match.index}`,
+      "md",
       fullStart, fullStart + markerLen,
       COLORS.boldMarker[0], COLORS.boldMarker[1], COLORS.boldMarker[2],
       false, false, false
     );
     editor.addOverlay(
       bufferId,
-      `md:bold-end:${lineNumber}:${match.index}`,
+      "md",
       fullEnd - markerLen, fullEnd,
       COLORS.boldMarker[0], COLORS.boldMarker[1], COLORS.boldMarker[2],
       false, false, false
@@ -676,7 +676,7 @@ function highlightLine(
     // Bold content
     editor.addOverlay(
       bufferId,
-      `md:bold-content:${lineNumber}:${match.index}`,
+      "md",
       fullStart + markerLen, fullEnd - markerLen,
       COLORS.bold[0], COLORS.bold[1], COLORS.bold[2],
       false, true, false
@@ -691,14 +691,14 @@ function highlightLine(
     // Subdued markers
     editor.addOverlay(
       bufferId,
-      `md:italic-start:${lineNumber}:${match.index}`,
+      "md",
       fullStart, fullStart + 1,
       COLORS.italicMarker[0], COLORS.italicMarker[1], COLORS.italicMarker[2],
       false, false, false
     );
     editor.addOverlay(
       bufferId,
-      `md:italic-end:${lineNumber}:${match.index}`,
+      "md",
       fullEnd - 1, fullEnd,
       COLORS.italicMarker[0], COLORS.italicMarker[1], COLORS.italicMarker[2],
       false, false, false
@@ -706,7 +706,7 @@ function highlightLine(
     // Italic content
     editor.addOverlay(
       bufferId,
-      `md:italic-content:${lineNumber}:${match.index}`,
+      "md",
       fullStart + 1, fullEnd - 1,
       COLORS.italic[0], COLORS.italic[1], COLORS.italic[2],
       false, false, true
@@ -725,7 +725,7 @@ function highlightLine(
     // Link text (underlined)
     editor.addOverlay(
       bufferId,
-      `md:linktext:${lineNumber}:${match.index}`,
+      "md",
       textStart, textEnd,
       COLORS.link[0], COLORS.link[1], COLORS.link[2],
       true  // underline
@@ -733,7 +733,7 @@ function highlightLine(
     // Link URL (subdued)
     editor.addOverlay(
       bufferId,
-      `md:linkurl:${lineNumber}:${match.index}`,
+      "md",
       urlStart, urlEnd,
       COLORS.linkUrl[0], COLORS.linkUrl[1], COLORS.linkUrl[2],
       false
@@ -743,7 +743,7 @@ function highlightLine(
 
 // Clear highlights for a buffer
 function clearHighlights(bufferId: number): void {
-  editor.removeOverlaysByPrefix(bufferId, "md:");
+  editor.clearNamespace(bufferId, "md");
 }
 
 // Build view transform with soft breaks
