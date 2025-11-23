@@ -1146,21 +1146,41 @@ globalThis.onMarkdownBufferActivated = function(data: { buffer_id: number }): vo
   enableHighlighting(data.buffer_id);
 };
 
-// Handle content changes - mark buffer as needing overlay refresh
-globalThis.onMarkdownAfterInsert = function(data: { buffer_id: number }): void {
-  if (highlightingBuffers.has(data.buffer_id)) {
-    dirtyBuffers.add(data.buffer_id);
-  }
-  // Note: Don't call refreshLines here - it causes flicker
-  // The natural render cycle will handle updates
+// Handle content changes - clear affected overlays for efficient updates
+globalThis.onMarkdownAfterInsert = function(data: {
+  buffer_id: number;
+  position: number;
+  text: string;
+  affected_start: number;
+  affected_end: number;
+}): void {
+  if (!highlightingBuffers.has(data.buffer_id)) return;
+
+  // Clear only overlays in the affected byte range
+  // These overlays may now span incorrect content after the insertion
+  // The affected lines will be re-processed via lines_changed with correct content
+  editor.clearOverlaysInRange(data.buffer_id, data.affected_start, data.affected_end);
+  dirtyBuffers.add(data.buffer_id);
 };
 
-globalThis.onMarkdownAfterDelete = function(data: { buffer_id: number }): void {
-  if (highlightingBuffers.has(data.buffer_id)) {
-    dirtyBuffers.add(data.buffer_id);
-  }
-  // Note: Don't call refreshLines here - it causes flicker
-  // The natural render cycle will handle updates
+globalThis.onMarkdownAfterDelete = function(data: {
+  buffer_id: number;
+  start: number;
+  end: number;
+  deleted_text: string;
+  affected_start: number;
+  deleted_len: number;
+}): void {
+  if (!highlightingBuffers.has(data.buffer_id)) return;
+
+  // Clear overlays that overlapped with the deleted range
+  // Overlays entirely within the deleted range are already gone (their markers were deleted)
+  // But overlays spanning the deletion boundary may now be incorrect
+  // Use a slightly expanded range to catch boundary cases
+  const clearStart = data.affected_start > 0 ? data.affected_start - 1 : 0;
+  const clearEnd = data.affected_start + 1;
+  editor.clearOverlaysInRange(data.buffer_id, clearStart, clearEnd);
+  dirtyBuffers.add(data.buffer_id);
 };
 
 // Handle buffer close events

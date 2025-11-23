@@ -1825,9 +1825,9 @@ impl Editor {
                         buffer_id,
                         position: *position,
                         text: text.clone(),
-                        // Pass byte range info instead of line numbers
-                        affected_line_start: insert_position,
-                        affected_line_end: insert_position + insert_len,
+                        // Byte range of the affected area
+                        affected_start: insert_position,
+                        affected_end: insert_position + insert_len,
                     },
                 ))
             }
@@ -1851,9 +1851,9 @@ impl Editor {
                         buffer_id,
                         range: range.clone(),
                         deleted_text: deleted_text.clone(),
-                        // Pass byte range info
-                        affected_line_start: delete_start,
-                        lines_deleted: deleted_text.len(),
+                        // Byte position and length of deleted content
+                        affected_start: delete_start,
+                        deleted_len: deleted_text.len(),
                     },
                 ))
             }
