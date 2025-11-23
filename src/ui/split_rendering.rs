@@ -814,10 +814,26 @@ impl SplitRenderer {
         view_mapping: &[Option<usize>],
         top_byte: usize,
     ) -> ViewAnchor {
-        let view_top = view_mapping
+        // Find the first position where source_offset >= top_byte
+        let first_source_pos = view_mapping
             .iter()
-            .position(|m| m.map_or(false, |s| s >= top_byte))
-            .unwrap_or(0);
+            .position(|m| m.map_or(false, |s| s >= top_byte));
+
+        // Calculate view_top: the position in view space where we should start rendering
+        let view_top = match first_source_pos {
+            Some(pos) => {
+                // Walk backwards from the first source-mapped position to include
+                // any injected content (source_offset: None) that precedes it.
+                // This ensures headers injected before source content are visible.
+                let mut start = pos;
+                while start > 0 && view_mapping[start - 1].is_none() {
+                    start -= 1;
+                }
+                start
+            }
+            None => 0,
+        };
+
         let mut view_start_line_idx = 0usize;
         let mut view_start_line_skip = 0usize;
         for (idx, line) in view_lines.iter().enumerate() {
