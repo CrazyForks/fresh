@@ -2429,6 +2429,160 @@ impl Editor {
         self.status_message = Some("Pasted".to_string());
     }
 
+    // === Method aliases for compatibility ===
+
+    /// Alias for paste()
+    pub fn paste_clipboard(&mut self) {
+        self.paste();
+    }
+
+    /// Alias for copy_selection()
+    pub fn select_all(&mut self) {
+        // TODO: Implement select all - need to create selection from start to end of buffer
+        tracing::warn!("select_all() not yet implemented");
+    }
+
+    /// Alias for split_pane_horizontal()
+    pub fn split_horizontal(&mut self) {
+        self.split_pane_horizontal();
+    }
+
+    /// Alias for split_pane_vertical()
+    pub fn split_vertical(&mut self) {
+        self.split_pane_vertical();
+    }
+
+    /// Alias for close_active_split()
+    pub fn close_split(&mut self) {
+        self.close_active_split();
+    }
+
+    // === LSP Operations (stubs for now) ===
+
+    pub fn trigger_completion(&mut self) {
+        tracing::warn!("trigger_completion() not yet implemented");
+    }
+
+    pub fn goto_definition(&mut self) {
+        tracing::warn!("goto_definition() not yet implemented");
+    }
+
+    pub fn lsp_hover(&mut self) {
+        tracing::warn!("lsp_hover() not yet implemented");
+    }
+
+    pub fn lsp_references(&mut self) {
+        tracing::warn!("lsp_references() not yet implemented");
+    }
+
+    pub fn lsp_rename(&mut self) {
+        tracing::warn!("lsp_rename() not yet implemented");
+    }
+
+    // === Undo/Redo (stubs) ===
+
+    pub fn undo(&mut self) {
+        tracing::warn!("undo() not yet implemented");
+    }
+
+    pub fn redo(&mut self) {
+        tracing::warn!("redo() not yet implemented");
+    }
+
+    // === Search/Replace (stubs) ===
+
+    pub fn prompt_search(&mut self) {
+        tracing::warn!("prompt_search() not yet implemented");
+    }
+
+    pub fn find_next(&mut self) {
+        tracing::warn!("find_next() not yet implemented");
+    }
+
+    pub fn find_prev(&mut self) {
+        tracing::warn!("find_prev() not yet implemented");
+    }
+
+    pub fn prompt_replace(&mut self) {
+        tracing::warn!("prompt_replace() not yet implemented");
+    }
+
+    pub fn replace_next(&mut self) {
+        tracing::warn!("replace_next() not yet implemented");
+    }
+
+    // === UI/Navigation (stubs) ===
+
+    pub fn toggle_line_wrap(&mut self) {
+        tracing::warn!("toggle_line_wrap() not yet implemented");
+    }
+
+    pub fn hide_popup(&mut self) {
+        tracing::warn!("hide_popup() not yet implemented");
+    }
+
+    pub fn handle_popup_confirm(&mut self) {
+        tracing::warn!("handle_popup_confirm() not yet implemented");
+    }
+
+    pub fn open_command_palette(&mut self) {
+        tracing::warn!("open_command_palette() not yet implemented");
+    }
+
+    pub fn open_recent(&mut self) {
+        tracing::warn!("open_recent() not yet implemented");
+    }
+
+    pub fn open_config(&mut self) {
+        tracing::warn!("open_config() not yet implemented");
+    }
+
+    pub fn open_help(&mut self) {
+        tracing::warn!("open_help() not yet implemented");
+    }
+
+    pub fn open_theme_switcher(&mut self) {
+        tracing::warn!("open_theme_switcher() not yet implemented");
+    }
+
+    pub fn open_logs(&mut self) {
+        tracing::warn!("open_logs() not yet implemented");
+    }
+
+    pub fn toggle_compose_mode(&mut self) {
+        tracing::warn!("toggle_compose_mode() not yet implemented");
+    }
+
+    pub fn prompt_save_as(&mut self) {
+        tracing::warn!("prompt_save_as() not yet implemented");
+    }
+
+    pub fn prompt_open(&mut self) {
+        tracing::warn!("prompt_open() not yet implemented");
+    }
+
+    pub fn focus_file_explorer(&mut self) {
+        tracing::warn!("focus_file_explorer() not yet implemented");
+    }
+
+    pub fn toggle_file_explorer(&mut self) {
+        tracing::warn!("toggle_file_explorer() not yet implemented");
+    }
+
+    pub fn run_plugin_action(&mut self, _name: &str) {
+        tracing::warn!("run_plugin_action() not yet implemented");
+    }
+
+    pub fn file_dialog(&mut self, _prompt: &str) -> io::Result<Option<PathBuf>> {
+        tracing::warn!("file_dialog() not yet implemented");
+        Ok(None)
+    }
+
+    pub fn save_all(&mut self) -> io::Result<()> {
+        tracing::warn!("save_all() not yet implemented");
+        Ok(())
+    }
+
     /// Add a cursor at the next occurrence of the selected text
     /// If no selection, does nothing
     pub fn add_cursor_at_next_match(&mut self) {
