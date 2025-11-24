@@ -485,135 +485,14 @@ pub fn action_to_events(
         }
 
         // Basic movement - move each cursor
-        Action::MoveLeft => {
-            for (cursor_id, cursor) in state.cursors.iter() {
-                // Use prev_char_boundary to ensure we land on a valid UTF-8 character boundary
-                let new_pos = state.buffer.prev_char_boundary(cursor.position);
-                // Preserve anchor if deselect_on_move is false (Emacs mark mode)
-                let new_anchor = if cursor.deselect_on_move {
-                    None
-                } else {
-                    cursor.anchor
-                };
-                events.push(Event::MoveCursor {
-                    cursor_id,
-                    old_position: cursor.position,
-                    new_position: new_pos,
-                    old_anchor: cursor.anchor,
-                    new_anchor,
-                    old_sticky_column: cursor.sticky_column,
-                    new_sticky_column: 0, // Reset sticky column on horizontal movement
-                });
-            }
+        Action::MoveLeft | Action::MoveRight => {
+            // VIEW-BASED TODO: horizontal movement needs layout-aware mapping.
+            // Stub: no-op until view-centric navigation implemented.
         }
 
-        Action::MoveRight => {
-            for (cursor_id, cursor) in state.cursors.iter() {
-                let max_pos = max_cursor_position(&state.buffer);
-                // Use next_char_boundary to ensure we land on a valid UTF-8 character boundary
-                let new_pos = state
-                    .buffer
-                    .next_char_boundary(cursor.position)
-                    .min(max_pos);
-                // Preserve anchor if deselect_on_move is false (Emacs mark mode)
-                let new_anchor = if cursor.deselect_on_move {
-                    None
-                } else {
-                    cursor.anchor
-                };
-                events.push(Event::MoveCursor {
-                    cursor_id,
-                    old_position: cursor.position,
-                    new_position: new_pos,
-                    old_anchor: cursor.anchor,
-                    new_anchor,
-                    old_sticky_column: cursor.sticky_column,
-                    new_sticky_column: 0, // Reset sticky column on horizontal movement
-                });
-            }
-        }
-
-        Action::MoveUp => {
-            for (cursor_id, cursor) in state.cursors.iter() {
-                // Use iterator to navigate to previous line
-                // line_iterator positions us at the start of the current line
-                let mut iter = state
-                    .buffer
-                    .line_iterator(cursor.position, estimated_line_length);
-                let current_line_start = iter.current_position();
-                let current_column = cursor.position.saturating_sub(current_line_start);
-
-                // Use sticky_column if set, otherwise use current column
-                let goal_column = if cursor.sticky_column > 0 {
-                    cursor.sticky_column
-                } else {
-                    current_column
-                };
-
-                // Get previous line
-                if let Some((prev_line_start, prev_line_content)) = iter.prev() {
-                    // Calculate length without trailing newline
-                    let prev_line_len = prev_line_content.trim_end_matches('\n').len();
-                    let new_pos = prev_line_start + goal_column.min(prev_line_len);
-
-                    // Preserve anchor if deselect_on_move is false (Emacs mark mode)
-                    let new_anchor = if cursor.deselect_on_move {
-                        None
-                    } else {
-                        cursor.anchor
-                    };
-                    events.push(Event::MoveCursor {
-                        cursor_id,
-                        old_position: cursor.position,
-                        new_position: new_pos,
-                        old_anchor: cursor.anchor,
-                        new_anchor,
-                        old_sticky_column: cursor.sticky_column,
-                        new_sticky_column: goal_column, // Preserve the goal column
-                    });
-                }
-            }
-        }
-
-        Action::MoveDown => {
-            for (cursor_id, cursor) in state.cursors.iter() {
-                let mut iter = state
-                    .buffer
-                    .line_iterator(cursor.position, estimated_line_length);
-                let current_line_start = iter.current_position();
-                let current_column = cursor.position.saturating_sub(current_line_start);
-
-                // Use sticky_column if set, otherwise use current column
-                let goal_column = if cursor.sticky_column > 0 {
-                    cursor.sticky_column
-                } else {
-                    current_column
-                };
-
-                // Skip current line, then get next line
-                iter.next();
-                if let Some((next_line_start, next_line_content)) = iter.next() {
-                    // Calculate length without trailing newline
-                    let next_line_len = next_line_content.trim_end_matches('\n').len();
-                    let new_pos = next_line_start + goal_column.min(next_line_len);
-
-                    // Preserve anchor if deselect_on_move is false (Emacs mark mode)
-                    let new_anchor = if cursor.deselect_on_move {
-                        None
-                    } else {
-                        cursor.anchor
-                    };
-                    events.push(Event::MoveCursor {
-                        cursor_id,
-                        old_position: cursor.position,
-                        new_position: new_pos,
-                        old_anchor: cursor.anchor,
-                        new_anchor,
-                        old_sticky_column: cursor.sticky_column,
-                        new_sticky_column: goal_column, // Preserve the goal column
-                    });
-                }
-            }
+        Action::MoveUp | Action::MoveDown => {
+            // VIEW-BASED TODO: vertical movement must be layout-based.
+            // Stub: no-op until view-centric navigation implemented.
         }
 
         Action::MoveLineStart => {
