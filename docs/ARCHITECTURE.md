@@ -564,6 +564,19 @@ We want a single, view-first model that supports both code and true WYSIWYG docu
 
 No interim “reset to top” or buffer-line fallbacks: the view layer must always be authoritative and capable of representing cursor/selection everywhere, including injected regions.
 
+### Implementation plan (modular, file-by-file)
+
+To make the view-centric rewrite tractable, split responsibilities into small, pure modules with clear inputs/outputs:
+
+- **Cursor & View Positions (pure)**: `ViewPosition { view_line, column, source_byte: Option<usize> }`, view-based selections; comparison/normalization helpers. Lives in `src/cursor.rs`.
+- **Layout Navigation (pure, stateless)**: Given a `Layout`, `Viewport` (height/width, top_view_line), and a view cursor (with preferred column), compute new view positions and viewport offsets. Functions: vertical/horizontal move, line start/end, page moves, word moves (on view text), scroll. Lives in `src/navigation/layout_nav.rs`.
+- **View↔Source Mapping (pure)**: Translate between view positions and source bytes via layout mappings. Functions: `view_pos_to_source`, `source_to_view_pos`. Lives in `src/navigation/mapping.rs`.
+- **Edit Mapping (thin, stateless)**: Given a view selection/position and layout, produce an optional buffer range for insert/delete; error if region is view-only. Lives in `src/navigation/edit_map.rs`.
+- **Action Conversion (pure-ish)**: Convert `Action` + `Layout` + `Viewport` + view cursors/config into `Vec<Event>` that carry view positions. Movement emits view-position `MoveCursor`; edits map via `edit_map` when `source_byte` exists, otherwise reject/delegate. Lives in `src/navigation/action_convert.rs` (replaces legacy byte-based `actions.rs`).
+- **Editor Integration (stateful)**: Fetch/ensure layout, call the new action converter, apply events to buffer/view state, and handle view-only edit rejections. Touches `src/editor/render.rs`/`input.rs`.
+- **Viewport/Render updates**: Ensure viewport sync/ensure_visible use view positions; render consumes view-based cursors/selections.
+- **Tests/Plugins**: Update tests to expect view-position events/cursors; adjust harness if it needs layout/view info. Plugins remain buffer-based for edits, but view transforms can carry initial viewport/cursor hints separately.
+
 ### The Frame Flow
 
 ```
