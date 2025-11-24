@@ -92,6 +92,16 @@ impl ViewEventPosition {
     }
 }
 
+impl From<crate::cursor::ViewPosition> for ViewEventPosition {
+    fn from(pos: crate::cursor::ViewPosition) -> Self {
+        Self {
+            view_line: pos.view_line,
+            column: pos.column,
+            source_byte: pos.source_byte,
+        }
+    }
+}
+
 /// View-based range used by view-centric delete events
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewEventRange {

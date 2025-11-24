@@ -226,9 +226,9 @@ impl Editor {
     /// Handle a resolved action (view-centric edits and nav).
     pub fn handle_action(&mut self, action: Action) -> std::io::Result<()> {
         // Pre/post hooks (e.g., before/after command).
-        if let Some(hook_registry) = self.hook_registry.as_ref() {
+        if let Some(ref ts_manager) = self.ts_plugin_manager {
             let hook_args = HookArgs::PreCommand { action: action.clone() };
-            hook_registry.read().unwrap().run_hooks("pre-command", &hook_args);
+            ts_manager.run_hook("pre-command", hook_args);
         }
 
         match action {
@@ -459,9 +459,9 @@ impl Editor {
             _ => {}
         }
 
-        if let Some(hook_registry) = self.hook_registry.as_ref() {
+        if let Some(ref ts_manager) = self.ts_plugin_manager {
             let hook_args = HookArgs::PostCommand { action };
-            hook_registry.read().unwrap().run_hooks("post-command", &hook_args);
+            ts_manager.run_hook("post-command", hook_args);
         }
 
         Ok(())
@@ -596,9 +596,9 @@ impl Editor {
                     // Create MoveCursor event with view position
                     let event = crate::event::Event::MoveCursor {
                         cursor_id,
-                        old_position,
-                        new_position,
-                        old_anchor,
+                        old_position: old_position.into(),
+                        new_position: new_position.into(),
+                        old_anchor: old_anchor.map(|a| a.into()),
                         new_anchor: None,
                         old_sticky_column,
                         new_sticky_column: Some(new_position.column),

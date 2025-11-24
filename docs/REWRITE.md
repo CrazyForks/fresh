@@ -49,6 +49,40 @@ This document captures the final architecture for rewriting the remaining byte-c
 **Priority 3: Misc errors (~20 errors)**
 - Missing fields, trait bounds, pattern matching, closures
 
+### Critical Missing Functionality (Currently Stubbed/Removed):
+
+⚠️ **These are NOT just compilation errors - these are fundamental features that have been removed or stubbed during the refactoring and MUST be reimplemented:**
+
+1. **Core Editing Logic (CRITICAL - Editor Non-Functional)**
+   - **Location**: `src/state.rs` - Insert and Delete event handlers
+   - **Status**: Replaced with TODO stubs
+   - **Impact**: The editor's core state machine cannot process text modifications. All editing commands are inoperative at the foundational level.
+   - **Action Required**: Port byte-centric insert/delete logic to view-centric coordinates using Layout for source mapping
+
+2. **Cursor Position Adjustment (CRITICAL - Multi-Cursor Broken)**
+   - **Location**: `src/cursor.rs` - `adjust_for_edit` logic
+   - **Status**: Completely removed
+   - **Impact**: Cursors become desynchronized from text after edits. Breaks multi-cursor and multi-split views.
+   - **Action Required**: Implement view-centric cursor adjustment that updates positions after insert/delete operations
+
+3. **Horizontal and Word-Based Navigation (HIGH PRIORITY - Panics)**
+   - **Location**: `src/navigation/action_convert.rs`
+   - **Status**: Currently panic! for MoveLeft, MoveRight, MoveWordLeft, MoveWordRight and selection variants
+   - **Impact**: Basic cursor movement crashes the editor
+   - **Action Required**: Port horizontal navigation to use Layout's character mappings, implement word boundary detection in view coordinates
+
+4. **Block (Rectangular) Selection (DROPPED FEATURE)**
+   - **Location**: `src/cursor.rs` - block selection methods
+   - **Status**: Completely removed, actions unreachable
+   - **Impact**: Feature completely unavailable
+   - **Action Required**: Re-implement from scratch using view-centric coordinates, requires column-wise selection across view lines
+
+5. **Semantic Highlighting (DISABLED)**
+   - **Location**: `src/semantic_highlight.rs` - `highlight_occurrences` function
+   - **Status**: Replaced with panic!
+   - **Impact**: No highlighting for word under cursor
+   - **Action Required**: Adapt to view-centric cursor positions, map to source ranges via Layout for identifier matching
+
 **IMPORTANT:** Commits 267037b and 8cc3742 accidentally added code for pre-refactored APIs and were reverted to 8cb7782.
 
 **Completed Core Modules:**

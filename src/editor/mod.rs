@@ -1316,7 +1316,11 @@ impl Editor {
         state.text_properties = properties;
 
         // Reset cursor to beginning
-        state.cursors.primary_mut().position = 0;
+        state.cursors.primary_mut().position = ViewPosition {
+            view_line: 0,
+            column: 0,
+            source_byte: Some(0),
+        };
         state.cursors.primary_mut().anchor = None;
 
         Ok(())
@@ -1328,7 +1332,8 @@ impl Editor {
     ) -> Option<Vec<&crate::text_property::TextProperty>> {
         let state = self.buffers.get(&self.active_buffer)?;
         let cursor_pos = state.cursors.primary().position;
-        Some(state.text_properties.get_at(cursor_pos))
+        let byte = cursor_pos.source_byte?;
+        Some(state.text_properties.get_at(byte))
     }
 
     /// Close the given buffer
@@ -1760,9 +1765,13 @@ impl Editor {
 
             if let Some(view_state) = self.split_view_states.get_mut(&split_id) {
                 for (edit_pos, old_len, new_len) in &adjustments {
-                    view_state
-                        .cursors
-                        .adjust_for_edit(*edit_pos, *old_len, *new_len);
+                    // TODO: adjust_for_edit needs to work with ViewEventPosition/ViewPosition
+                    // For now, extract source_byte if available
+                    if let Some(byte) = edit_pos.source_byte {
+                        view_state
+                            .cursors
+                            .adjust_for_edit(byte, *old_len, *new_len);
+                    }
                 }
             }
         }
@@ -2235,11 +2244,19 @@ impl Editor {
         let buffer_id = self.active_buffer;
 
         // Get mutable references to both buffer and view state
-        let buffer = self.buffers.get_mut(&buffer_id).map(|s| &mut s.buffer);
-        let view_state = self.split_view_states.get_mut(&active_split);
-
-        if let (Some(buffer), Some(view_state)) = (buffer, view_state) {
-            view_state.viewport.scroll_to(buffer, top_line);
+        if let (Some(buffer_state), Some(view_state)) = (
+            self.buffers.get_mut(&buffer_id),
+            self.split_view_states.get_mut(&active_split),
+        ) {
+            // Ensure we have a layout
+            let gutter_width = view_state.viewport.gutter_width(&buffer_state.buffer);
+            let wrap_params = Some((view_state.viewport.width as usize, gutter_width));
+            let layout = view_state.ensure_layout(
+                &mut buffer_state.buffer,
+                self.config.editor.estimated_line_length,
+                wrap_params,
+            );
+            view_state.viewport.scroll_to(layout, top_line);
         }
     }
 
@@ -2561,14 +2578,6 @@ impl Editor {
         tracing::warn!("prompt_open() not yet implemented");
     }
 
-    pub fn focus_file_explorer(&mut self) {
-        tracing::warn!("focus_file_explorer() not yet implemented");
-    }
-
-    pub fn toggle_file_explorer(&mut self) {
-        tracing::warn!("toggle_file_explorer() not yet implemented");
-    }
-
     pub fn run_plugin_action(&mut self, _name: &str) {
         tracing::warn!("run_plugin_action() not yet implemented");
     }
@@ -2589,7 +2598,7 @@ impl Editor {
         tracing::warn!("clear_search_highlights() not yet implemented");
     }
 
-    pub fn update_search_highlights(&mut self) {
+    pub fn update_search_highlights(&mut self, _text: &str) {
         tracing::warn!("update_search_highlights() not yet implemented");
     }
 
@@ -2597,7 +2606,7 @@ impl Editor {
         tracing::warn!("notify_lsp_save() not yet implemented");
     }
 
-    pub fn ensure_active_tab_visible(&mut self) {
+    pub fn ensure_active_tab_visible(&mut self, _split_id: SplitId, _buffer_id: BufferId, _terminal_width: u16) {
         tracing::warn!("ensure_active_tab_visible() not yet implemented");
     }
 
@@ -2607,6 +2616,17 @@ impl Editor {
 
     pub fn remove_overlay(&mut self, _buffer_id: BufferId, _namespace: String) {
         tracing::warn!("remove_overlay() not yet implemented");
+    }
+
+    /// Convert ViewPosition to ViewEventPosition
+    pub fn view_pos_to_event(&self, pos: ViewPosition) -> ViewEventPosition {
+        pos.into()
+    }
+
+    /// Collect LSP changes from an event
+    fn collect_lsp_changes(&self, event: &Event) -> Vec<TextDocumentContentChangeEvent> {
+        let buffer = self.active_state().buffer();
+        collect_lsp_changes(buffer, event)
     }
 
     /// Add a cursor at the next occurrence of the selected text
@@ -3117,7 +3137,9 @@ impl Editor {
         };
 
         if use_selection_range {
-            self.pending_search_range = selection_range;
+            self.pending_search_range = selection_range.and_then(|(start, end)| {
+                Some(start.source_byte?..end.source_byte?)
+            });
         }
 
         // Determine the default text: selection > last history > empty
