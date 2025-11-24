@@ -1,8 +1,7 @@
 use crate::async_bridge::LspMessageType;
-use crate::event::{BufferId, SplitDirection, SplitId};
+use crate::event::{BufferId, SplitDirection, SplitId, ViewEventPosition, ViewEventRange};
 use crate::keybindings::Action;
 use ratatui::layout::Rect;
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_BACKGROUND_FILE: &str = "scripts/landscape-wide.txt";
@@ -12,14 +11,14 @@ pub const DEFAULT_BACKGROUND_FILE: &str = "scripts/landscape-wide.txt";
 pub(super) struct SearchState {
     /// The search query
     pub query: String,
-    /// All match positions in the buffer (byte offsets)
-    pub matches: Vec<usize>,
+    /// All match positions in the buffer (view positions)
+    pub matches: Vec<ViewEventPosition>,
     /// Index of the currently selected match
     pub current_match_index: Option<usize>,
     /// Whether search wraps around at document boundaries
     pub wrap_search: bool,
     /// Optional search range (for search in selection)
-    pub search_range: Option<Range<usize>>,
+    pub search_range: Option<ViewEventRange>,
     /// Whether search is case-sensitive (default: true)
     pub case_sensitive: bool,
     /// Whether to match whole words only (default: false)
@@ -31,8 +30,8 @@ pub(super) struct SearchState {
 pub(super) struct Bookmark {
     /// Buffer ID where the bookmark is set
     pub buffer_id: BufferId,
-    /// Byte offset position in the buffer
-    pub position: usize,
+    /// View position in the buffer
+    pub position: ViewEventPosition,
 }
 
 /// State for interactive replace (query-replace)
@@ -42,10 +41,10 @@ pub(super) struct InteractiveReplaceState {
     pub search: String,
     /// The replacement text
     pub replacement: String,
-    /// Current match position (byte offset of the match we're at)
-    pub current_match_pos: usize,
+    /// Current match position (view position of the match we're at)
+    pub current_match_pos: ViewEventPosition,
     /// Starting position (to detect when we've wrapped around full circle)
-    pub start_pos: usize,
+    pub start_pos: ViewEventPosition,
     /// Whether we've wrapped around to the beginning
     pub has_wrapped: bool,
     /// Number of replacements made so far
@@ -247,8 +246,8 @@ pub(super) struct MouseState {
     /// Initial mouse row when starting to drag the scrollbar thumb
     /// Used to calculate relative movement rather than jumping
     pub drag_start_row: Option<u16>,
-    /// Initial viewport top_byte when starting to drag the scrollbar thumb
-    pub drag_start_top_byte: Option<usize>,
+    /// Initial viewport top_view_line when starting to drag the scrollbar thumb
+    pub drag_start_top_view_line: Option<usize>,
     /// Whether we're currently dragging a split separator
     /// Stores (split_id, direction) for the separator being dragged
     pub dragging_separator: Option<(SplitId, SplitDirection)>,

@@ -2,31 +2,85 @@
 
 This document captures the final architecture for rewriting the remaining byte-centric modules into the new view-centric model. All public APIs must use `ViewPosition`/`ViewEventPosition`/`ViewEventRange` and only consult source bytes via `Layout` when needed. No buffer-first fallbacks.
 
-## Progress Summary (Last Updated: 2025-11-24)
+## Progress Summary (Last Updated: 2025-11-24 Evening)
 
-**Completed Modules:**
+**IMPORTANT:** Commits 267037b and 8cc3742 accidentally added code for pre-refactored APIs and were reverted.
+
+**Completed Core Modules:**
 - ✅ position_history.rs - Fully view-centric
 - ✅ word_navigation.rs - View helpers implemented
-- ✅ viewport.rs - Uses top_view_line
+- ✅ viewport.rs - Uses top_view_line (but has top_byte remnants to fix)
 - ✅ status_bar.rs - Displays view positions
 - ✅ split_rendering.rs - Renders from Layout
 - ✅ navigation/action_convert.rs - Core actions + word nav + line ops
-- ✅ navigation/layout_nav.rs - Pure layout navigation + word nav wrappers
+- ✅ navigation/layout_nav.rs - Pure layout navigation (has one top_byte ref to fix)
 - ✅ navigation/edit_map.rs - View→source mapping
 - ✅ navigation/mapping.rs - Mapping helpers
 
-**In Progress:**
-- ✅ editor/input.rs - Goto line implemented with view mapping
-- ✅ editor/render.rs - action_to_events done, LSP change collection done
-- ✅ editor/mod.rs - collect_lsp_changes() implemented for view events
-- ⚠️ lsp_diagnostics.rs - Partially updated for view events
+**Type Updates Completed:**
+- ✅ editor/types.rs - SearchState, Bookmark, InteractiveReplaceState use ViewEventPosition
+- ✅ editor/types.rs - MouseState uses drag_start_top_view_line instead of top_byte
 
-**Deferred (lower priority):**
-- Search find-next/prev (needs view mapping)
-- Other prompt types (OpenFile, SaveAs, Search, Replace, Command, etc.)
-- Mouse/block selections
+**Remaining Work (235 compilation errors):**
+
+### High Priority - Core Infrastructure
+1. **editor/input.rs** (~60 errors)
+   - Remove references to non-existent Action variants (OpenFile, SaveAll, etc)
+   - Remove calls to removed methods (file_dialog, save_all, hide_popup, etc)
+   - Fix handle_action to only use existing Actions
+   - Many editor methods were removed during refactoring
+
+2. **editor/mod.rs** (~120 errors)
+   - Missing methods: collect_lsp_changes, clear_search_highlights, update_search_highlights
+   - Missing methods: notify_lsp_save, add_overlay, remove_overlay, ensure_active_tab_visible
+   - Event struct issues: missing source_range field, wrong field names
+   - ViewEventPosition/ViewEventRange need comparison operators and len()
+   - Selection/cursor tuple access (.start, .end) - need proper struct
+   - viewport.top_byte references (should be top_view_line)
+
+3. **cursor.rs & multi_cursor.rs** (~15 errors)
+   - cursor.column field access (Cursor needs to expose column or use accessors)
+   - ViewPosition arithmetic operations
+   - Selection tuple .start/.end access
+
+4. **split.rs** (~20 errors)
+   - viewport.top_byte references
+   - SplitRenderer::apply_wrapping_transform removed
+   - Type mismatches with ViewPosition
+
+5. **state.rs** (~10 errors)
+   - adjust_cursors_for_insert/delete functions missing
+   - VirtualTextManager adjust_for_insert/delete methods missing
+   - viewport.top_byte reference
+
+6. **script_control.rs** (~6 errors)
+   - handle_mouse method removed from Editor
+
+7. **ui/split_rendering.rs** (~5 errors)
+   - SplitRenderer::temporary_split_state removed
+   - AnsiBackground::render_background removed
+   - Theme field names changed (gutter_fg, gutter_bg, text_fg)
+
+8. **viewport.rs** (~1 error)
+   - Anonymous lifetime issue
+
+### Pattern of Errors
+Most errors fall into these categories:
+1. **Removed methods/fields**: Many Editor methods were removed during refactoring
+2. **top_byte → top_view_line**: Incomplete migration of viewport
+3. **ViewPosition/ViewEventPosition operations**: Need comparison, arithmetic, Display
+4. **Event struct changes**: Missing or renamed fields
+5. **Selection/cursor representation**: Tuples → proper structs needed
 
 **Key Change:** `navigation::action_convert::action_to_events()` now takes `&Buffer` parameter for word navigation.
+
+**Next Steps:**
+1. Fix viewport.top_byte → top_view_line everywhere
+2. Implement comparison/arithmetic for ViewPosition types
+3. Add Display impl for ViewEventPosition
+4. Create proper Selection struct instead of tuples
+5. Restore or stub removed Editor methods that are actually needed
+6. Clean up editor/input.rs to remove dead code
 
 ---
 
