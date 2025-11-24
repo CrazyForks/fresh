@@ -16,10 +16,15 @@ This document captures the final architecture for rewriting the remaining byte-c
 - ✅ navigation/mapping.rs - Mapping helpers
 
 **In Progress:**
-- ⚠️ editor/input.rs - Partially stubbed, needs completion
-- ⚠️ editor/render.rs - action_to_events done, needs LSP/search
-- ⚠️ editor/mod.rs - Position history done, needs full integration
+- ✅ editor/input.rs - Goto line implemented with view mapping
+- ✅ editor/render.rs - action_to_events done, LSP change collection done
+- ✅ editor/mod.rs - collect_lsp_changes() implemented for view events
 - ⚠️ lsp_diagnostics.rs - Partially updated for view events
+
+**Deferred (lower priority):**
+- Search find-next/prev (needs view mapping)
+- Other prompt types (OpenFile, SaveAs, Search, Replace, Command, etc.)
+- Mouse/block selections
 
 **Key Change:** `navigation::action_convert::action_to_events()` now takes `&Buffer` parameter for word navigation.
 
