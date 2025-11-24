@@ -5599,16 +5599,17 @@ impl Editor {
             // Calculate byte position from line and character
             if let Some(state) = self.buffers.get(&buffer_id) {
                 let position = state.buffer.line_col_to_position(line, character);
+                let view_pos = ViewEventPosition::from_source_byte(position);
 
                 // Move cursor
                 let cursor_id = state.cursors.primary_id();
-                let old_position = state.cursors.primary().position;
-                let old_anchor = state.cursors.primary().anchor;
+                let old_position: ViewEventPosition = state.cursors.primary().position.into();
+                let old_anchor: Option<ViewEventPosition> = state.cursors.primary().anchor.map(|a| a.into());
                 let old_sticky_column = state.cursors.primary().sticky_column;
                 let event = crate::event::Event::MoveCursor {
                     cursor_id,
                     old_position,
-                    new_position: position,
+                    new_position: view_pos,
                     old_anchor,
                     new_anchor: None,
                     old_sticky_column,
@@ -5989,6 +5990,7 @@ impl Editor {
         // Get the current buffer and cursor position
         let state = self.active_state();
         let cursor_pos = state.cursors.primary().position;
+        let cursor_byte = cursor_pos.source_byte.unwrap_or(0);
 
         // Extract the word under cursor for display
         let symbol = {
@@ -5996,12 +5998,12 @@ impl Editor {
             let bytes = text.as_bytes();
             let buf_len = bytes.len();
 
-            if cursor_pos <= buf_len {
+            if cursor_byte <= buf_len {
                 // Find word boundaries
                 let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
 
                 // Find start of word
-                let mut start = cursor_pos;
+                let mut start = cursor_byte;
                 while start > 0 {
                     // Move to previous byte
                     start -= 1;
@@ -6021,7 +6023,7 @@ impl Editor {
                 }
 
                 // Find end of word
-                let mut end = cursor_pos;
+                let mut end = cursor_byte;
                 while end < buf_len {
                     if let Some(ch) = text[end..].chars().next() {
                         if is_word_char(ch) {
@@ -6045,7 +6047,7 @@ impl Editor {
         };
 
         // Convert view position to LSP position (line, UTF-16 code units)
-        let (line, character) = view_event_pos_to_lsp(&state.buffer, cursor_pos);
+        let (line, character) = view_event_pos_to_lsp(&state.buffer, cursor_pos.into());
 
         // Get the current file URI and path
         let metadata = self.buffer_metadata.get(&self.active_buffer);
