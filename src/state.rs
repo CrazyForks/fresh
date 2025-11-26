@@ -30,16 +30,14 @@ pub enum ViewMode {
     Compose,
 }
 
-/// The complete editor state - everything needed to represent the current editing session
+/// The complete editor state - buffer and buffer-related state
+///
+/// Note: Cursors and viewport are NOT stored here - they live in SplitViewState
+/// because each split viewing this buffer has independent cursor positions and
+/// viewport scroll state. The apply() method takes cursors/viewport as parameters.
 pub struct EditorState {
     /// The text buffer
     pub buffer: Buffer,
-
-    /// All cursors
-    pub cursors: Cursors,
-
-    /// The viewport
-    pub viewport: Viewport,
 
     /// Syntax highlighter (optional - only created if language is detected)
     pub highlighter: Option<Highlighter>,
@@ -103,19 +101,11 @@ pub struct EditorState {
 
 impl EditorState {
     /// Create a new editor state with an empty buffer
-    pub fn new(width: u16, height: u16, large_file_threshold: usize) -> Self {
-        // Account for tab bar (1 line) and status bar (1 line)
-        let content_height = height.saturating_sub(2);
-        tracing::info!(
-            "EditorState::new: width={}, height={}, content_height={}",
-            width,
-            height,
-            content_height
-        );
+    ///
+    /// Note: Cursors and viewport are created separately in SplitViewState
+    pub fn new(large_file_threshold: usize) -> Self {
         Self {
             buffer: Buffer::new(large_file_threshold),
-            cursors: Cursors::new(),
-            viewport: Viewport::new(width, content_height),
             highlighter: None, // No file path, so no syntax highlighting
             indent_calculator: RefCell::new(IndentCalculator::new()),
             overlays: OverlayManager::new(),
@@ -156,14 +146,12 @@ impl EditorState {
     }
 
     /// Create an editor state from a file
+    ///
+    /// Note: Cursors and viewport are created separately in SplitViewState
     pub fn from_file(
         path: &std::path::Path,
-        width: u16,
-        height: u16,
         large_file_threshold: usize,
     ) -> std::io::Result<Self> {
-        // Account for tab bar (1 line) and status bar (1 line)
-        let content_height = height.saturating_sub(2);
         let buffer = Buffer::load_from_file(path, large_file_threshold)?;
 
         // Try to create a highlighter based on file extension
@@ -195,8 +183,6 @@ impl EditorState {
 
         Ok(Self {
             buffer,
-            cursors: Cursors::new(),
-            viewport: Viewport::new(width, content_height),
             highlighter,
             indent_calculator: RefCell::new(IndentCalculator::new()),
             overlays: OverlayManager::new(),
@@ -220,7 +206,10 @@ impl EditorState {
 
     /// Apply an event to the state - THE ONLY WAY TO MODIFY STATE
     /// This is the heart of the event-driven architecture
-    pub fn apply(&mut self, event: &Event) {
+    ///
+    /// Cursors and viewport are passed as parameters since they live in SplitViewState,
+    /// not in EditorState. Each split viewing this buffer has independent cursors/viewport.
+    pub fn apply(&mut self, event: &Event, cursors: &mut Cursors, viewport: &mut Viewport) {
         match event {
             Event::Insert {
                 position,
@@ -242,16 +231,16 @@ impl EditorState {
                 }
 
                 // Adjust all cursors after the edit
-                self.cursors.adjust_for_edit(*position, 0, text.len());
+                cursors.adjust_for_edit(*position, 0, text.len());
 
                 // Move the cursor that made the edit to the end of the insertion
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
+                if let Some(cursor) = cursors.get_mut(*cursor_id) {
                     cursor.position = position + text.len();
                     cursor.clear_selection();
                 }
 
                 // Update primary cursor line number if this was the primary cursor
-                if *cursor_id == self.cursors.primary_id() {
+                if *cursor_id == cursors.primary_id() {
                     self.primary_cursor_line_number = match self.primary_cursor_line_number {
                         LineNumber::Absolute(line) => {
                             LineNumber::Absolute(line + newlines_inserted)
@@ -267,7 +256,7 @@ impl EditorState {
                 }
 
                 // Defer viewport sync to rendering time for better performance
-                self.viewport.mark_needs_sync();
+                viewport.mark_needs_sync();
             }
 
             Event::Delete {
@@ -291,16 +280,16 @@ impl EditorState {
                 }
 
                 // Adjust all cursors after the edit
-                self.cursors.adjust_for_edit(range.start, len, 0);
+                cursors.adjust_for_edit(range.start, len, 0);
 
                 // Move the cursor that made the edit to the start of deletion
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
+                if let Some(cursor) = cursors.get_mut(*cursor_id) {
                     cursor.position = range.start;
                     cursor.clear_selection();
                 }
 
                 // Update primary cursor line number if this was the primary cursor
-                if *cursor_id == self.cursors.primary_id() {
+                if *cursor_id == cursors.primary_id() {
                     self.primary_cursor_line_number = match self.primary_cursor_line_number {
                         LineNumber::Absolute(line) => {
                             LineNumber::Absolute(line.saturating_sub(newlines_deleted))
@@ -316,7 +305,7 @@ impl EditorState {
                 }
 
                 // Defer viewport sync to rendering time for better performance
-                self.viewport.mark_needs_sync();
+                viewport.mark_needs_sync();
             }
 
             Event::MoveCursor {
@@ -326,18 +315,18 @@ impl EditorState {
                 new_sticky_column,
                 ..
             } => {
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
+                if let Some(cursor) = cursors.get_mut(*cursor_id) {
                     cursor.position = *new_position;
                     cursor.anchor = *new_anchor;
                     cursor.sticky_column = *new_sticky_column;
                 }
 
                 // Defer viewport sync to rendering time for better performance
-                self.viewport.mark_needs_sync();
+                viewport.mark_needs_sync();
 
                 // Update primary cursor line number if this is the primary cursor
                 // Try to get exact line number from buffer, or estimate for large files
-                if *cursor_id == self.cursors.primary_id() {
+                if *cursor_id == cursors.primary_id() {
                     self.primary_cursor_line_number =
                         match self.buffer.offset_to_position(*new_position) {
                             Some(pos) => LineNumber::Absolute(pos.line),
@@ -364,13 +353,13 @@ impl EditorState {
 
                 // Insert cursor with the specific ID from the event
                 // This is important for undo/redo to work correctly
-                self.cursors.insert_with_id(*cursor_id, cursor);
+                cursors.insert_with_id(*cursor_id, cursor);
 
-                self.cursors.normalize();
+                cursors.normalize();
             }
 
             Event::RemoveCursor { cursor_id, .. } => {
-                self.cursors.remove(*cursor_id);
+                cursors.remove(*cursor_id);
             }
 
             // View events (Scroll, SetViewport, Recenter) are now handled at Editor level
@@ -387,7 +376,7 @@ impl EditorState {
             } => {
                 // Set the anchor (selection start) for a specific cursor
                 // Also disable deselect_on_move so movement preserves the selection (Emacs mark mode)
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
+                if let Some(cursor) = cursors.get_mut(*cursor_id) {
                     cursor.anchor = Some(*position);
                     cursor.deselect_on_move = false;
                 }
@@ -395,7 +384,7 @@ impl EditorState {
 
             Event::ClearAnchor { cursor_id } => {
                 // Clear the anchor and reset deselect_on_move to cancel mark mode
-                if let Some(cursor) = self.cursors.get_mut(*cursor_id) {
+                if let Some(cursor) = cursors.get_mut(*cursor_id) {
                     cursor.anchor = None;
                     cursor.deselect_on_move = true;
                 }
@@ -552,51 +541,22 @@ impl EditorState {
                 // Apply all events in the batch sequentially
                 // This ensures multi-cursor operations are applied atomically
                 for event in events {
-                    self.apply(event);
+                    self.apply(event, cursors, viewport);
                 }
             }
         }
     }
 
     /// Apply multiple events in sequence
-    pub fn apply_many(&mut self, events: &[Event]) {
+    pub fn apply_many(&mut self, events: &[Event], cursors: &mut Cursors, viewport: &mut Viewport) {
         for event in events {
-            self.apply(event);
+            self.apply(event, cursors, viewport);
         }
     }
 
-    /// Get the primary cursor
-    pub fn primary_cursor(&self) -> &Cursor {
-        self.cursors.primary()
-    }
-
-    /// Get the primary cursor mutably (for reading state only, not for modification!)
-    pub fn primary_cursor_mut(&mut self) -> &mut Cursor {
-        self.cursors.primary_mut()
-    }
-
-    /// Get all cursor positions for rendering
-    pub fn cursor_positions(&mut self) -> Vec<(u16, u16)> {
-        let mut positions = Vec::new();
-        for (_, cursor) in self.cursors.iter() {
-            let pos = self
-                .viewport
-                .cursor_screen_position(&mut self.buffer, cursor);
-            positions.push(pos);
-        }
-        positions
-    }
-
-    /// Resize the viewport
-    pub fn resize(&mut self, width: u16, height: u16) {
-        // Account for tab bar (1 line) and status bar (1 line)
-        let content_height = height.saturating_sub(2);
-        self.viewport.resize(width, content_height);
-
-        // Ensure primary cursor is still visible after resize
-        let primary = *self.cursors.primary();
-        self.viewport.ensure_visible(&mut self.buffer, &primary);
-    }
+    // Note: primary_cursor(), cursor_positions(), and resize() have been removed.
+    // Cursors and viewport now live in SplitViewState, not EditorState.
+    // Access them directly from SplitViewState.
 }
 
 /// Convert event overlay face to the actual overlay face
@@ -715,11 +675,9 @@ impl EditorState {
     ///
     /// This pre-loads all data that will be needed for rendering the current viewport,
     /// ensuring that subsequent read-only access during rendering will succeed.
-    pub fn prepare_for_render(&mut self) -> Result<()> {
-        let start_offset = match self.viewport.top_byte {
-            offset => offset,
-        };
-        let line_count = self.viewport.height as usize;
+    pub fn prepare_for_render(&mut self, viewport: &Viewport) -> Result<()> {
+        let start_offset = viewport.top_byte;
+        let line_count = viewport.height as usize;
         self.buffer.prepare_viewport(start_offset, line_count)?;
         Ok(())
     }
