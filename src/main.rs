@@ -248,8 +248,10 @@ fn run_event_loop(
                     needs_render = true; // Schedule render for next frame
                 }
                 CrosstermEvent::Mouse(mouse_event) => {
-                    handle_mouse_event(editor, mouse_event)?;
-                    needs_render = true; // Schedule render for next frame
+                    let mouse_needs_render = handle_mouse_event(editor, mouse_event)?;
+                    if mouse_needs_render {
+                        needs_render = true; // Schedule render for next frame
+                    }
                 }
                 CrosstermEvent::Resize(width, height) => {
                     tracing::info!("Terminal resize event: {}x{}", width, height);
@@ -289,7 +291,8 @@ fn handle_key_event(editor: &mut Editor, key_event: KeyEvent) -> io::Result<()> 
 }
 
 /// Handle a mouse event
-fn handle_mouse_event(editor: &mut Editor, mouse_event: MouseEvent) -> io::Result<()> {
+/// Returns true if a re-render is needed
+fn handle_mouse_event(editor: &mut Editor, mouse_event: MouseEvent) -> io::Result<bool> {
     tracing::debug!(
         "Mouse event received: kind={:?}, column={}, row={}, modifiers={:?}",
         mouse_event.kind,
@@ -299,7 +302,5 @@ fn handle_mouse_event(editor: &mut Editor, mouse_event: MouseEvent) -> io::Resul
     );
 
     // Delegate to the editor's handle_mouse method
-    editor.handle_mouse(mouse_event)?;
-
-    Ok(())
+    editor.handle_mouse(mouse_event)
 }

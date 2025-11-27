@@ -2095,16 +2095,19 @@ impl Editor {
     }
 
     /// Handle a mouse event
+    /// Returns true if a re-render is needed
     pub fn handle_mouse(
         &mut self,
         mouse_event: crossterm::event::MouseEvent,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<bool> {
         use crossterm::event::{MouseButton, MouseEventKind};
 
         // Cancel LSP rename prompt on any mouse interaction
+        let mut needs_render = false;
         if let Some(ref prompt) = self.prompt {
             if matches!(prompt.prompt_type, PromptType::LspRename { .. }) {
                 self.cancel_prompt();
+                needs_render = true;
             }
         }
 
@@ -2121,9 +2124,11 @@ impl Editor {
         match mouse_event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 self.handle_mouse_click(col, row)?;
+                needs_render = true;
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 self.handle_mouse_drag(col, row)?;
+                needs_render = true;
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 // Stop dragging and clear drag state
@@ -2135,9 +2140,12 @@ impl Editor {
                 self.mouse_state.drag_start_ratio = None;
                 self.mouse_state.dragging_file_explorer = false;
                 self.mouse_state.drag_start_explorer_width = None;
+                needs_render = true;
             }
             MouseEventKind::Moved => {
-                self.update_hover_target(col, row);
+                // Only re-render if hover target actually changed
+                let hover_changed = self.update_hover_target(col, row);
+                needs_render = hover_changed;
             }
             MouseEventKind::ScrollUp => {
                 // Dismiss hover/signature help popups on scroll
@@ -2145,6 +2153,7 @@ impl Editor {
                 self.handle_mouse_scroll(col, row, -3)?;
                 // Sync viewport from SplitViewState to EditorState so rendering sees the scroll
                 self.sync_split_view_state_to_editor_state();
+                needs_render = true;
             }
             MouseEventKind::ScrollDown => {
                 // Dismiss hover/signature help popups on scroll
@@ -2152,6 +2161,7 @@ impl Editor {
                 self.handle_mouse_scroll(col, row, 3)?;
                 // Sync viewport from SplitViewState to EditorState so rendering sees the scroll
                 self.sync_split_view_state_to_editor_state();
+                needs_render = true;
             }
             _ => {
                 // Ignore other mouse events for now
@@ -2159,11 +2169,21 @@ impl Editor {
         }
 
         self.mouse_state.last_position = Some((col, row));
-        Ok(())
+        Ok(needs_render)
     }
 
     /// Update the current hover target based on mouse position
-    pub(super) fn update_hover_target(&mut self, col: u16, row: u16) {
+    /// Returns true if the hover target changed (requiring a re-render)
+    pub(super) fn update_hover_target(&mut self, col: u16, row: u16) -> bool {
+        let old_target = self.mouse_state.hover_target.clone();
+        let new_target = self.compute_hover_target(col, row);
+        let changed = old_target != new_target;
+        self.mouse_state.hover_target = new_target;
+        changed
+    }
+
+    /// Compute what hover target is at the given position
+    fn compute_hover_target(&self, col: u16, row: u16) -> Option<HoverTarget> {
         // Check suggestions area first (command palette, autocomplete)
         if let Some((inner_rect, start_idx, _visible_count, total_count)) =
             &self.cached_layout.suggestions_area
@@ -2177,8 +2197,7 @@ impl Editor {
                 let item_idx = start_idx + relative_row;
 
                 if item_idx < *total_count {
-                    self.mouse_state.hover_target = Some(HoverTarget::SuggestionItem(item_idx));
-                    return;
+                    return Some(HoverTarget::SuggestionItem(item_idx));
                 }
             }
         }
@@ -2199,9 +2218,7 @@ impl Editor {
                 let item_idx = scroll_offset + relative_row;
 
                 if item_idx < *num_items {
-                    self.mouse_state.hover_target =
-                        Some(HoverTarget::PopupListItem(*popup_idx, item_idx));
-                    return;
+                    return Some(HoverTarget::PopupListItem(*popup_idx, item_idx));
                 }
             }
         }
@@ -2218,8 +2235,7 @@ impl Editor {
                 .collect();
 
             if let Some(menu_idx) = self.menu_state.get_menu_at_position(&all_menus, col) {
-                self.mouse_state.hover_target = Some(HoverTarget::MenuBarItem(menu_idx));
-                return;
+                return Some(HoverTarget::MenuBarItem(menu_idx));
             }
         }
 
@@ -2236,9 +2252,7 @@ impl Editor {
 
             if let Some(menu) = all_menus.get(active_idx) {
                 if let Some(item_idx) = self.menu_state.get_item_at_position(menu, row) {
-                    self.mouse_state.hover_target =
-                        Some(HoverTarget::MenuDropdownItem(active_idx, item_idx));
-                    return;
+                    return Some(HoverTarget::MenuDropdownItem(active_idx, item_idx));
                 }
             }
         }
@@ -2251,8 +2265,7 @@ impl Editor {
                 && row >= explorer_area.y
                 && row < explorer_area.y + explorer_area.height
             {
-                self.mouse_state.hover_target = Some(HoverTarget::FileExplorerBorder);
-                return;
+                return Some(HoverTarget::FileExplorerBorder);
             }
         }
 
@@ -2268,9 +2281,7 @@ impl Editor {
             };
 
             if is_on_separator {
-                self.mouse_state.hover_target =
-                    Some(HoverTarget::SplitSeparator(*split_id, *direction));
-                return;
+                return Some(HoverTarget::SplitSeparator(*split_id, *direction));
             }
         }
 
@@ -2287,16 +2298,15 @@ impl Editor {
                 let is_on_thumb = relative_row >= *thumb_start && relative_row < *thumb_end;
 
                 if is_on_thumb {
-                    self.mouse_state.hover_target = Some(HoverTarget::ScrollbarThumb(*split_id));
+                    return Some(HoverTarget::ScrollbarThumb(*split_id));
                 } else {
-                    self.mouse_state.hover_target = Some(HoverTarget::ScrollbarTrack(*split_id));
+                    return Some(HoverTarget::ScrollbarTrack(*split_id));
                 }
-                return;
             }
         }
 
         // No hover target
-        self.mouse_state.hover_target = None;
+        None
     }
 
     /// Handle mouse click (down event)
