@@ -66,24 +66,27 @@ fn test_editor_creation_with_slow_fs() {
 
 #[test]
 fn test_typing_remains_fast_with_slow_fs() {
-    // Even with slow filesystem, typing should remain responsive
+    // Even with slow filesystem, typing should not trigger filesystem operations
     let slow_config = SlowFsConfig::uniform(Duration::from_millis(100));
     let mut harness = EditorTestHarness::with_slow_fs(80, 24, slow_config).unwrap();
 
-    let start = std::time::Instant::now();
+    // Get filesystem call count before typing
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let metrics_before = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
+    let calls_before = metrics_before.total_calls();
 
     // Type a moderate amount of text
     let text = "The quick brown fox jumps over the lazy dog";
     harness.type_text(text).unwrap();
 
-    let elapsed = start.elapsed();
+    // Verify no filesystem calls were made during typing
+    let metrics_after = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
+    let calls_during_typing = metrics_after.total_calls() - calls_before;
 
-    // Typing should be fast (not waiting on filesystem)
-    // Even with 100ms fs delays, typing 44 characters should be well under 1 second
     assert!(
-        elapsed < Duration::from_secs(1),
-        "Typing took {:?}, which is too slow. Text editing should not block on filesystem.",
-        elapsed
+        calls_during_typing == 0,
+        "Typing triggered {} filesystem calls, but should trigger none",
+        calls_during_typing
     );
 
     // Verify the text was actually inserted
@@ -119,14 +122,19 @@ fn test_slow_disk_preset() {
 
 #[test]
 fn test_navigation_with_slow_fs() {
-    // Test that cursor navigation is not affected by slow filesystem
+    // Test that cursor navigation does not trigger filesystem operations
     let slow_config = SlowFsConfig::uniform(Duration::from_millis(100));
     let mut harness = EditorTestHarness::with_slow_fs(80, 24, slow_config).unwrap();
 
     // Type some text
     harness.type_text("line 1\nline 2\nline 3").unwrap();
 
-    let start = std::time::Instant::now();
+    // Get filesystem call count before navigation
+    let metrics_before = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(harness.get_fs_metrics_snapshot())
+        .unwrap();
+    let calls_before = metrics_before.total_calls();
 
     // Navigate around (these operations should not touch filesystem)
     for _ in 0..10 {
@@ -138,27 +146,18 @@ fn test_navigation_with_slow_fs() {
             .unwrap();
     }
 
-    let elapsed = start.elapsed();
-
-    // Navigation should be instant (well under 100ms even with slow fs)
-    assert!(
-        elapsed < Duration::from_millis(500),
-        "Navigation took {:?}, which suggests it's waiting on filesystem",
-        elapsed
-    );
-
-    // Verify no extra filesystem calls were made for navigation
-    let metrics = tokio::runtime::Runtime::new()
+    // Verify no filesystem calls were made during navigation
+    let metrics_after = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(harness.get_fs_metrics_snapshot())
         .unwrap();
+    let calls_during_navigation = metrics_after.total_calls() - calls_before;
 
-    // Since we started with an empty buffer and didn't open files,
-    // there should be minimal filesystem calls
+    // Navigation should not trigger any filesystem operations
     assert!(
-        metrics.total_calls() < 10,
-        "Too many filesystem calls ({}) for simple navigation",
-        metrics.total_calls()
+        calls_during_navigation == 0,
+        "Navigation triggered {} filesystem calls, but should trigger none",
+        calls_during_navigation
     );
 }
 
@@ -186,14 +185,8 @@ fn test_metrics_provide_timing_info() {
 
 #[test]
 fn test_common_edit_flow_responsiveness() {
-    // This test simulates a realistic editing session with common workflows:
-    // - Loading a file
-    // - Editing text
-    // - Scrolling through content
-    // - Saving the file
-    // - Using file explorer (if we open it)
-    //
-    // The goal is to ensure all operations remain responsive even with slow I/O
+    // This test simulates a realistic editing session with common workflows
+    // and verifies that editing operations do not trigger filesystem access.
 
     // Use slow_disk preset for realistic slow filesystem scenario
     let slow_config = SlowFsConfig::slow_disk();
@@ -203,25 +196,12 @@ fn test_common_edit_flow_responsiveness() {
 
     // Get initial metrics to track filesystem operations
     let initial_metrics = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
-    let start_time = std::time::Instant::now();
 
-    // === Phase 1: Create and load a file ===
-    let phase1_start = std::time::Instant::now();
-
-    // Create some initial content to work with
+    // === Phase 1: Create initial content ===
     let initial_content = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
     harness.type_text(initial_content).unwrap();
 
-    let phase1_elapsed = phase1_start.elapsed();
-    assert!(
-        phase1_elapsed < Duration::from_millis(500),
-        "Phase 1 (file creation) took {:?}, too slow",
-        phase1_elapsed
-    );
-
     // === Phase 2: Edit the file with realistic operations ===
-    let phase2_start = std::time::Instant::now();
-
     // Navigate to end of first line
     harness.send_key(KeyCode::Up, KeyModifiers::NONE).unwrap();
     harness.send_key(KeyCode::Up, KeyModifiers::NONE).unwrap();
@@ -246,20 +226,10 @@ fn test_common_edit_flow_responsiveness() {
         .unwrap();
     harness.type_text("}").unwrap();
 
-    let phase2_elapsed = phase2_start.elapsed();
-    assert!(
-        phase2_elapsed < Duration::from_secs(2),
-        "Phase 2 (editing) took {:?}, typing is not responsive",
-        phase2_elapsed
-    );
-
-    // === Phase 3: Navigation and scrolling ===
-    let phase3_start = std::time::Instant::now();
-
-    // Move cursor around the document
+    // === Phase 3: Navigation ===
     harness
         .send_key(KeyCode::Home, KeyModifiers::CONTROL)
-        .unwrap(); // Go to start
+        .unwrap();
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
     harness
@@ -272,36 +242,15 @@ fn test_common_edit_flow_responsiveness() {
     harness.send_key(KeyCode::End, KeyModifiers::NONE).unwrap();
     harness.send_key(KeyCode::Home, KeyModifiers::NONE).unwrap();
 
-    let phase3_elapsed = phase3_start.elapsed();
-    assert!(
-        phase3_elapsed < Duration::from_millis(200),
-        "Phase 3 (navigation) took {:?}, cursor movement is sluggish",
-        phase3_elapsed
-    );
-
     // === Phase 4: Undo/Redo operations ===
-    let phase4_start = std::time::Instant::now();
-
-    // Test undo
     harness
         .send_key(KeyCode::Char('z'), KeyModifiers::CONTROL)
         .unwrap();
-
-    // Test redo
     harness
         .send_key(KeyCode::Char('y'), KeyModifiers::CONTROL)
         .unwrap();
 
-    let phase4_elapsed = phase4_start.elapsed();
-    assert!(
-        phase4_elapsed < Duration::from_millis(100),
-        "Phase 4 (undo/redo) took {:?}, operations are slow",
-        phase4_elapsed
-    );
-
     // === Phase 5: Multiple small edits (simulating real typing) ===
-    let phase5_start = std::time::Instant::now();
-
     harness
         .send_key(KeyCode::End, KeyModifiers::CONTROL)
         .unwrap();
@@ -322,39 +271,15 @@ fn test_common_edit_flow_responsiveness() {
         .unwrap();
     harness.type_text("ment").unwrap();
 
-    let phase5_elapsed = phase5_start.elapsed();
-    assert!(
-        phase5_elapsed < Duration::from_millis(500),
-        "Phase 5 (incremental edits) took {:?}, interactive typing feels laggy",
-        phase5_elapsed
-    );
-
-    // === Phase 6: Verify no unnecessary filesystem operations ===
+    // === Verify no unnecessary filesystem operations ===
     let final_metrics = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
-
-    // During text editing, we shouldn't be hitting the filesystem much
     let fs_calls_during_edit = final_metrics.total_calls() - initial_metrics.total_calls();
 
-    // There might be some calls during initialization, but editing operations
-    // should not trigger filesystem access (unless autosave is enabled)
+    // Editing operations should not trigger filesystem access
     assert!(
-        fs_calls_during_edit < 50,
-        "Too many filesystem calls ({}) during editing session. \
-         Text editing should not require frequent filesystem access.",
+        fs_calls_during_edit == 0,
+        "Editing triggered {} filesystem calls, but should trigger none",
         fs_calls_during_edit
-    );
-
-    // === Overall responsiveness check ===
-    let total_elapsed = start_time.elapsed();
-
-    // The entire editing session should feel snappy
-    // Even with slow disk (200ms dir reads, 20ms metadata), interactive
-    // operations should complete quickly because they don't touch disk
-    assert!(
-        total_elapsed < Duration::from_secs(5),
-        "Total editing session took {:?}, which feels unresponsive. \
-         Interactive operations should not be blocked by slow I/O.",
-        total_elapsed
     );
 
     // Verify the content is correct
@@ -371,26 +296,16 @@ fn test_common_edit_flow_responsiveness() {
         final_content.contains("// Add some comment"),
         "Comment should be present"
     );
-
-    // Print metrics for analysis
-    println!("=== Edit Flow Performance Metrics ===");
-    println!("Phase 1 (Initial content): {:?}", phase1_elapsed);
-    println!("Phase 2 (Editing): {:?}", phase2_elapsed);
-    println!("Phase 3 (Navigation): {:?}", phase3_elapsed);
-    println!("Phase 4 (Selection): {:?}", phase4_elapsed);
-    println!("Phase 5 (Incremental): {:?}", phase5_elapsed);
-    println!("Total time: {:?}", total_elapsed);
-    println!("Filesystem calls: {}", fs_calls_during_edit);
-    println!("Total delay time: {:?}", final_metrics.total_delay_time);
 }
 
 #[test]
 fn test_buffer_switching_with_slow_fs() {
-    // Test that switching between multiple buffers remains responsive
-    // even with slow filesystem
+    // Test that working with multiple buffers does not trigger filesystem operations
 
     let slow_config = SlowFsConfig::uniform(Duration::from_millis(100));
     let mut harness = EditorTestHarness::with_slow_fs(80, 24, slow_config).unwrap();
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
 
     // Create first buffer with content
     harness.type_text("Buffer 1 content").unwrap();
@@ -403,26 +318,26 @@ fn test_buffer_switching_with_slow_fs() {
     harness.new_buffer().unwrap();
     harness.type_text("Buffer 3 content").unwrap();
 
-    // Now switch between buffers rapidly
-    let start = std::time::Instant::now();
+    // Get filesystem call count before navigation
+    let metrics_before = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
+    let calls_before = metrics_before.total_calls();
 
-    // Switch back and forth multiple times
+    // Navigate within buffer multiple times
     for _ in 0..5 {
-        // These would be buffer switching commands
-        // For now we'll just verify we can create and work with multiple buffers
         harness.send_key(KeyCode::Left, KeyModifiers::NONE).unwrap();
         harness
             .send_key(KeyCode::Right, KeyModifiers::NONE)
             .unwrap();
     }
 
-    let elapsed = start.elapsed();
+    // Verify no filesystem calls were made during navigation
+    let metrics_after = runtime.block_on(harness.get_fs_metrics_snapshot()).unwrap();
+    let calls_during_navigation = metrics_after.total_calls() - calls_before;
 
-    // Buffer switching should be instant (in-memory operation)
     assert!(
-        elapsed < Duration::from_millis(200),
-        "Buffer navigation took {:?}, should be instant as it's in-memory",
-        elapsed
+        calls_during_navigation == 0,
+        "Buffer navigation triggered {} filesystem calls, but should trigger none",
+        calls_during_navigation
     );
 
     // Verify content is correct
