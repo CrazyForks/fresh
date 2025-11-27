@@ -1569,33 +1569,33 @@ impl SplitRenderer {
                 // Use per-line mappings instead of global view_mapping
                 let byte_pos = line_char_mappings.get(col_offset).copied().flatten();
 
-                // Process character through ANSI parser first
-                // If it returns None, the character is part of an escape sequence and should be skipped
-                let ansi_style = match ansi_parser.parse_char(ch) {
-                    Some(style) => style,
-                    None => {
-                        // This character is part of an ANSI escape sequence, skip it
-                        // But we still need to increment col_offset since view_mapping includes
-                        // all characters (ANSI sequences are in the flattened view text)
-                        //
-                        // IMPORTANT: If the cursor is on this ANSI byte, we need to track it
-                        // so the cursor renders at the first visible character that follows.
-                        // We set a flag here and will position the cursor when we hit
-                        // the first visible character.
-                        if let Some(bp) = byte_pos {
-                            if bp == primary_cursor_position && !have_cursor {
-                                // Mark that cursor is on an ANSI sequence - it will be
-                                // positioned at the next visible character
-                                // For now, set to current visible position (gutter + visible chars so far)
-                                cursor_screen_x = gutter_width as u16 + visible_char_count as u16;
-                                cursor_screen_y = lines_rendered.saturating_sub(1) as u16;
-                                have_cursor = true;
+                // Process character through ANSI parser first (if line has ANSI)
+                // If parser returns None, the character is part of an escape sequence and should be skipped
+                let ansi_style = if let Some(ref mut parser) = ansi_parser {
+                    match parser.parse_char(ch) {
+                        Some(style) => style,
+                        None => {
+                            // This character is part of an ANSI escape sequence, skip it
+                            // But we still need to increment col_offset since view_mapping includes
+                            // all characters (ANSI sequences are in the flattened view text)
+                            //
+                            // IMPORTANT: If the cursor is on this ANSI byte, we need to track it
+                            // so the cursor renders at the first visible character that follows.
+                            if let Some(bp) = byte_pos {
+                                if bp == primary_cursor_position && !have_cursor {
+                                    cursor_screen_x = gutter_width as u16 + visible_char_count as u16;
+                                    cursor_screen_y = lines_rendered.saturating_sub(1) as u16;
+                                    have_cursor = true;
+                                }
                             }
+                            char_index += ch.len_utf8();
+                            col_offset += 1;
+                            continue;
                         }
-                        char_index += ch.len_utf8();
-                        col_offset += 1;
-                        continue;
                     }
+                } else {
+                    // No ANSI in this line - use default style (fast path)
+                    Style::default()
                 };
 
                 // Performance: skip expensive style calculations for characters beyond visible range
