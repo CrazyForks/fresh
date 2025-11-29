@@ -3,7 +3,7 @@ use crossterm::{
     cursor::SetCursorStyle,
     event::{
         poll as event_poll, read as event_read, Event as CrosstermEvent, KeyEvent,
-        KeyboardEnhancementFlags, MouseEvent, PopKeyboardEnhancementFlags,
+        KeyEventKind, KeyboardEnhancementFlags, MouseEvent, PopKeyboardEnhancementFlags,
         PushKeyboardEnhancementFlags,
     },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -248,8 +248,12 @@ fn run_event_loop(
 
         match event {
             CrosstermEvent::Key(key_event) => {
-                handle_key_event(editor, key_event)?;
-                needs_render = true;
+                // Only process key press events to avoid duplicate events on Windows
+                // (Windows sends both Press and Release events, while Linux/macOS only send Press)
+                if key_event.kind == KeyEventKind::Press {
+                    handle_key_event(editor, key_event)?;
+                    needs_render = true;
+                }
             }
             CrosstermEvent::Mouse(mouse_event) => {
                 if handle_mouse_event(editor, mouse_event)? {
