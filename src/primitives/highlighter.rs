@@ -61,29 +61,29 @@ impl HighlightCategory {
     /// TypeScript has more categories; we map them to the closest theme color.
     fn from_typescript_index(index: usize) -> Option<Self> {
         match index {
-            0 => Some(Self::Attribute),          // attribute
-            1 => Some(Self::Comment),            // comment
-            2 => Some(Self::Constant),           // constant
-            3 => Some(Self::Constant),           // constant.builtin
-            4 => Some(Self::Type),               // constructor
-            5 => Some(Self::String),             // embedded (template substitutions)
-            6 => Some(Self::Function),           // function
-            7 => Some(Self::Function),           // function.builtin
-            8 => Some(Self::Function),           // function.method
-            9 => Some(Self::Keyword),            // keyword
-            10 => Some(Self::Number),            // number
-            11 => Some(Self::Operator),          // operator
-            12 => Some(Self::Property),          // property
-            13 => Some(Self::Operator),          // punctuation.bracket
-            14 => Some(Self::Operator),          // punctuation.delimiter
-            15 => Some(Self::Constant),          // punctuation.special (template ${})
-            16 => Some(Self::String),            // string
-            17 => Some(Self::String),            // string.special (regex)
-            18 => Some(Self::Type),              // type
-            19 => Some(Self::Type),              // type.builtin
-            20 => Some(Self::Variable),          // variable
-            21 => Some(Self::Constant),          // variable.builtin (this, super, arguments)
-            22 => Some(Self::Variable),          // variable.parameter
+            0 => Some(Self::Attribute), // attribute
+            1 => Some(Self::Comment),   // comment
+            2 => Some(Self::Constant),  // constant
+            3 => Some(Self::Constant),  // constant.builtin
+            4 => Some(Self::Type),      // constructor
+            5 => Some(Self::String),    // embedded (template substitutions)
+            6 => Some(Self::Function),  // function
+            7 => Some(Self::Function),  // function.builtin
+            8 => Some(Self::Function),  // function.method
+            9 => Some(Self::Keyword),   // keyword
+            10 => Some(Self::Number),   // number
+            11 => Some(Self::Operator), // operator
+            12 => Some(Self::Property), // property
+            13 => Some(Self::Operator), // punctuation.bracket
+            14 => Some(Self::Operator), // punctuation.delimiter
+            15 => Some(Self::Constant), // punctuation.special (template ${})
+            16 => Some(Self::String),   // string
+            17 => Some(Self::String),   // string.special (regex)
+            18 => Some(Self::Type),     // type
+            19 => Some(Self::Type),     // type.builtin
+            20 => Some(Self::Variable), // variable
+            21 => Some(Self::Constant), // variable.builtin (this, super, arguments)
+            22 => Some(Self::Variable), // variable.parameter
             _ => None,
         }
     }
@@ -998,8 +998,12 @@ mod tests {
         assert!(!light_spans.is_empty());
 
         // Keywords should have different colors in different themes
-        let dark_keyword = dark_spans.iter().find(|s| s.color == dark_theme.syntax_keyword);
-        let light_keyword = light_spans.iter().find(|s| s.color == light_theme.syntax_keyword);
+        let dark_keyword = dark_spans
+            .iter()
+            .find(|s| s.color == dark_theme.syntax_keyword);
+        let light_keyword = light_spans
+            .iter()
+            .find(|s| s.color == light_theme.syntax_keyword);
 
         assert!(dark_keyword.is_some(), "Dark theme should have keyword");
         assert!(light_keyword.is_some(), "Light theme should have keyword");

@@ -651,14 +651,14 @@ impl Theme {
             diagnostic_hint_bg: Color::Rgb(240, 240, 240),
 
             // Syntax highlighting colors (improved light theme palette)
-            syntax_keyword: Color::Rgb(175, 0, 219),   // Purple keywords
-            syntax_string: Color::Rgb(163, 21, 21),    // Dark red strings
-            syntax_comment: Color::Rgb(0, 128, 0),     // Green comments
-            syntax_function: Color::Rgb(121, 94, 38),  // Brown functions
-            syntax_type: Color::Rgb(0, 128, 128),      // Teal types
-            syntax_variable: Color::Rgb(0, 16, 128),   // Dark blue variables
-            syntax_constant: Color::Rgb(0, 112, 193),  // Blue constants
-            syntax_operator: Color::Rgb(0, 0, 0),      // Black operators
+            syntax_keyword: Color::Rgb(175, 0, 219), // Purple keywords
+            syntax_string: Color::Rgb(163, 21, 21),  // Dark red strings
+            syntax_comment: Color::Rgb(0, 128, 0),   // Green comments
+            syntax_function: Color::Rgb(121, 94, 38), // Brown functions
+            syntax_type: Color::Rgb(0, 128, 128),    // Teal types
+            syntax_variable: Color::Rgb(0, 16, 128), // Dark blue variables
+            syntax_constant: Color::Rgb(0, 112, 193), // Blue constants
+            syntax_operator: Color::Rgb(0, 0, 0),    // Black operators
         }
     }
 
@@ -830,8 +830,8 @@ impl Theme {
 
             status_bar_fg: Color::Rgb(0, 0, 0),
             status_bar_bg: Color::Rgb(0, 170, 170), // Cyan status bar
-            prompt_fg: Color::Rgb(255, 255, 85), // Yellow text
-            prompt_bg: Color::Rgb(0, 0, 170),    // Blue background
+            prompt_fg: Color::Rgb(255, 255, 85),    // Yellow text
+            prompt_bg: Color::Rgb(0, 0, 170),       // Blue background
             prompt_selection_fg: Color::Rgb(0, 0, 0),
             prompt_selection_bg: Color::Rgb(170, 170, 170),
 

@@ -441,13 +441,16 @@ impl StatusBarRenderer {
             keybindings
                 .get_keybinding_for_action(action, crate::input::keybindings::KeyContext::Prompt)
                 .or_else(|| {
-                    keybindings
-                        .get_keybinding_for_action(action, crate::input::keybindings::KeyContext::Global)
+                    keybindings.get_keybinding_for_action(
+                        action,
+                        crate::input::keybindings::KeyContext::Global,
+                    )
                 })
         };
 
         // Get keybindings for search options
-        let case_shortcut = get_shortcut(&crate::input::keybindings::Action::ToggleSearchCaseSensitive);
+        let case_shortcut =
+            get_shortcut(&crate::input::keybindings::Action::ToggleSearchCaseSensitive);
         let word_shortcut = get_shortcut(&crate::input::keybindings::Action::ToggleSearchWholeWord);
         let regex_shortcut = get_shortcut(&crate::input::keybindings::Action::ToggleSearchRegex);
 
@@ -522,7 +525,11 @@ impl StatusBarRenderer {
 
             spans.push(Span::styled(
                 confirm_checkbox,
-                if confirm_value { active_style } else { base_style },
+                if confirm_value {
+                    active_style
+                } else {
+                    base_style
+                },
             ));
             spans.push(Span::styled(" Confirm each", base_style));
             if let Some(shortcut) = &confirm_shortcut {
