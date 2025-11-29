@@ -122,12 +122,78 @@
         .h1-ascii {
             font-weight: 700;
             color: var(--accent-green);
-            white-space: pre; 
-            line-height: 0.8; 
-            margin-bottom: 20px; 
-            margin-top: 10px; /* Restore original margin */
-            font-size: 0.5em; 
+            white-space: pre;
+            line-height: 1.0;
+            margin-bottom: 20px;
+            margin-top: 10px;
+            font-size: 0.5em;
+            perspective: 1000px;
         }
+
+        /* Flipping ASCII Art Styles */
+        .ascii-line {
+            display: flex;
+            line-height: 1.0;
+            flex-wrap: nowrap;
+        }
+
+        .ascii-block {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s ease-out;
+            margin: 0;
+            padding: 0;
+            line-height: 1.0;
+            flex-shrink: 0;
+        }
+
+        .ascii-block.flippable {
+            cursor: pointer;
+        }
+
+        .ascii-block-face {
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            text-shadow: 0 0 5px rgba(16, 185, 129, 0.3);
+        }
+
+        .ascii-block.flippable::before {
+            content: attr(data-char);
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            left: 0;
+            top: 0;
+            backface-visibility: hidden;
+            background-color: var(--accent-green);
+            color: var(--bg-dark);
+            transform: rotateY(180deg);
+            box-shadow: 0 0 10px var(--accent-green);
+            border-radius: 2px;
+        }
+
+        .ascii-block.flippable:hover,
+        .ascii-block.flippable.is-hovered {
+            transform: rotateY(180deg);
+        }
+
+        /* Cascading delay effect */
+        .ascii-line:nth-child(even) .ascii-block.flippable { transition-delay: 0.025s; }
+        .ascii-line:nth-child(odd) .ascii-block.flippable { transition-delay: 0s; }
+        .ascii-block.flippable:nth-child(3n) { transition-delay: 0.05s; }
+        .ascii-block.flippable:nth-child(3n+1) { transition-delay: 0s; }
+        .ascii-block.flippable:nth-child(3n+2) { transition-delay: 0.025s; }
 
 
         .subtitle {
@@ -183,12 +249,12 @@
         @media (min-width: 768px) {
             #main-content {
                 /* Restore desktop padding */
-                padding: 40px 40px 40px 40px; 
+                padding: 40px 40px 40px 40px;
                 font-size: 20px; /* Increased from 16px to 20px for desktop */
             }
             .h1-ascii {
                 font-size: 1.2em; /* Keep desktop size large */
-                line-height: 1;
+                line-height: 1.0;
                 margin-top: 10px; /* Reset margin for desktop */
             }
             /* Removed absolute positioning overrides for .github-link */
@@ -295,13 +361,8 @@
 
     <!-- Main content container is now wrapped in a simple <main> element --><main id="main-content">
         
-        <!-- HEADER: FRESH ASCII ART --><div class="h1-ascii">
-███████╗██████╗ ███████╗███████╗██╗  ██╗
-██╔════╝██╔══██╗██╔════╝██╔════╝██║  ██║
-█████╗  ██████╔╝█████╗  ███████╗███████║
-██╔══╝  ██╔══██╗██╔══╝  ╚════██║██╔══██║
-██║     ██║  ██║███████╗███████║██║  ██║
-╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
+        <!-- HEADER: FRESH ASCII ART (Interactive Flipping Animation) --><div id="ascii-art-container" class="h1-ascii">
+            <!-- ASCII art will be injected here by JavaScript -->
         </div>
         
         <!-- NEW FLEX CONTAINER for Tagline and Link -->
@@ -400,8 +461,113 @@
             <b>Links:</b> <a href="https://github.com/sinelaw/fresh" target="_blank">GitHub</a> | <a href="#top">Back to Top</a>
         </div>
     </footer>
-    
-    <!-- Removed custom scrollbar JavaScript -->
+
+    <!-- Flipping ASCII Art Animation Script -->
+    <script>
+        const asciiArtText = `
+███████╗██████╗ ███████╗███████╗██╗  ██╗
+██╔════╝██╔══██╗██╔════╝██╔════╝██║  ██║
+█████╗  ██████╔╝█████╗  ███████╗███████║
+██╔══╝  ██╔══██╗██╔══╝  ╚════██║██╔══██║
+██║     ██║  ██║███████╗███████║██║  ██║
+╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
+        `.trim();
+
+        const container = document.getElementById('ascii-art-container');
+        const flipTimers = new Map();
+        const FLIP_DURATION = 600;
+
+        function scheduleFlipBack(block) {
+            if (flipTimers.has(block)) {
+                clearTimeout(flipTimers.get(block));
+                flipTimers.delete(block);
+            }
+
+            const timer = setTimeout(() => {
+                block.classList.remove('is-hovered');
+                flipTimers.delete(block);
+            }, FLIP_DURATION);
+
+            flipTimers.set(block, timer);
+        }
+
+        function handleMouseMove(event) {
+            const targetBlock = event.target.closest('.ascii-block.flippable');
+
+            if (targetBlock) {
+                if (!targetBlock.classList.contains('is-hovered')) {
+                    targetBlock.classList.add('is-hovered');
+                    scheduleFlipBack(targetBlock);
+                }
+            }
+        }
+
+        function handleMouseLeave() {
+            flipTimers.forEach(timer => clearTimeout(timer));
+            flipTimers.clear();
+
+            document.querySelectorAll('.ascii-block.is-hovered').forEach(block => {
+                block.classList.remove('is-hovered');
+            });
+        }
+
+        function attachListeners() {
+            container.addEventListener('mousemove', handleMouseMove);
+            container.addEventListener('mouseleave', handleMouseLeave);
+        }
+
+        function generateFlippingBlocks() {
+            const lines = asciiArtText.split('\n');
+            let html = '';
+
+            lines.forEach((line, lineIndex) => {
+                html += `<div class="ascii-line ascii-line-${lineIndex + 1}">`;
+
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    const isFlippable = char === '█';
+                    const flippableClass = isFlippable ? ' flippable' : '';
+                    const dataAttr = isFlippable ? ` data-char="${char}"` : '';
+                    html += `<span class="ascii-block${flippableClass}"${dataAttr}><span class="ascii-block-face">${char === ' ' ? '&nbsp;' : char}</span></span>`;
+                }
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+            attachListeners();
+        }
+
+        function playIntroWave() {
+            const lines = container.querySelectorAll('.ascii-line');
+            const delayPerColumn = 20; // ms between each column
+
+            // Find max columns
+            let maxCols = 0;
+            lines.forEach(line => {
+                maxCols = Math.max(maxCols, line.children.length);
+            });
+
+            // Flip column by column
+            for (let col = 0; col < maxCols; col++) {
+                setTimeout(() => {
+                    lines.forEach(line => {
+                        const block = line.children[col];
+                        if (block && block.classList.contains('flippable')) {
+                            block.classList.add('is-hovered');
+                            setTimeout(() => {
+                                block.classList.remove('is-hovered');
+                            }, FLIP_DURATION);
+                        }
+                    });
+                }, col * delayPerColumn);
+            }
+        }
+
+        window.onload = function() {
+            generateFlippingBlocks();
+            setTimeout(playIntroWave, 1000);
+        };
+    </script>
 
 </body>
 </html>
