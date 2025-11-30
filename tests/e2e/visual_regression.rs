@@ -75,9 +75,9 @@ fn long_function() {
     harness.open_file(&project_dir.join("src/main.rs")).unwrap();
     harness.render().unwrap();
 
-    // Open file explorer with Ctrl+B
+    // Open file explorer with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 

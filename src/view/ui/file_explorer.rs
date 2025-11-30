@@ -39,6 +39,9 @@ impl FileExplorerRenderer {
         let visible_end = (scroll_offset + viewport_height).min(display_nodes.len());
         let visible_items = &display_nodes[scroll_offset..visible_end];
 
+        // Available width for content (subtract borders and cursor indicator)
+        let content_width = area.width.saturating_sub(3) as usize;
+
         // Create list items for visible nodes only
         let items: Vec<ListItem> = visible_items
             .iter()
@@ -55,6 +58,7 @@ impl FileExplorerRenderer {
                     is_focused,
                     files_with_unsaved_changes,
                     theme,
+                    content_width,
                 )
             })
             .collect();
@@ -145,11 +149,18 @@ impl FileExplorerRenderer {
         is_focused: bool,
         files_with_unsaved_changes: &HashSet<PathBuf>,
         theme: &Theme,
+        content_width: usize,
     ) -> ListItem<'static> {
         let node = view.tree().get_node(node_id).expect("Node should exist");
 
         // Build the line with indentation and tree structure
         let mut spans = Vec::new();
+
+        // Calculate the left side width for padding calculation
+        let indent_width = indent * 2;
+        let indicator_width = 2; // "▼ " or "● " or "  "
+        let name_width = node.entry.name.chars().count();
+        let left_side_width = indent_width + indicator_width + name_width;
 
         // Indentation
         if indent > 0 {
@@ -202,17 +213,40 @@ impl FileExplorerRenderer {
 
         spans.push(Span::styled(node.entry.name.clone(), name_style));
 
-        // Size info for files
-        if node.is_file() {
-            if let Some(metadata) = &node.entry.metadata {
-                if let Some(size) = metadata.size {
-                    let size_str = format!(" ({})", Self::format_size(size));
-                    spans.push(Span::styled(
-                        size_str,
-                        Style::default().fg(theme.line_number_fg),
-                    ));
-                }
-            }
+        // Size info for files, entry count for expanded directories (right-aligned)
+        let size_str = if node.is_file() {
+            node.entry
+                .metadata
+                .as_ref()
+                .and_then(|m| m.size)
+                .map(|size| Self::format_size(size))
+        } else if node.is_expanded() {
+            let count = node.children.len();
+            Some(if count == 1 {
+                "1 item".to_string()
+            } else {
+                format!("{} items", count)
+            })
+        } else {
+            None
+        };
+
+        if let Some(size_text) = size_str {
+            let size_display_width = size_text.chars().count();
+            // Calculate padding needed for right-alignment
+            // We need at least 1 space between name and size
+            let min_gap = 1;
+            let padding = if left_side_width + min_gap + size_display_width < content_width {
+                content_width - left_side_width - size_display_width
+            } else {
+                min_gap
+            };
+
+            spans.push(Span::raw(" ".repeat(padding)));
+            spans.push(Span::styled(
+                size_text,
+                Style::default().fg(theme.line_number_fg),
+            ));
         }
 
         // Error indicator
@@ -227,19 +261,23 @@ impl FileExplorerRenderer {
     }
 
     /// Format file size for display
+    /// - Uses 1 decimal place max
+    /// - All sizes shown in KB/MB/GB (no bytes) for alignment
+    /// - Files < 1KB shown as fractional KB (e.g., 0.3 KB)
     fn format_size(size: u64) -> String {
-        const KB: u64 = 1024;
-        const MB: u64 = KB * 1024;
-        const GB: u64 = MB * 1024;
+        const KB: f64 = 1024.0;
+        const MB: f64 = KB * 1024.0;
+        const GB: f64 = MB * 1024.0;
 
-        if size >= GB {
-            format!("{:.2} GB", size as f64 / GB as f64)
-        } else if size >= MB {
-            format!("{:.2} MB", size as f64 / MB as f64)
-        } else if size >= KB {
-            format!("{:.2} KB", size as f64 / KB as f64)
+        let size_f = size as f64;
+
+        if size_f >= GB {
+            format!("{:.1} GB", size_f / GB)
+        } else if size_f >= MB {
+            format!("{:.1} MB", size_f / MB)
         } else {
-            format!("{} B", size)
+            // Show everything in KB, including < 1KB as fractional
+            format!("{:.1} KB", size_f / KB)
         }
     }
 }
@@ -250,13 +288,21 @@ mod tests {
 
     #[test]
     fn test_format_size() {
-        assert_eq!(FileExplorerRenderer::format_size(500), "500 B");
-        assert_eq!(FileExplorerRenderer::format_size(1024), "1.00 KB");
-        assert_eq!(FileExplorerRenderer::format_size(1536), "1.50 KB");
-        assert_eq!(FileExplorerRenderer::format_size(1024 * 1024), "1.00 MB");
+        // Small files shown as fractional KB
+        assert_eq!(FileExplorerRenderer::format_size(0), "0.0 KB");
+        assert_eq!(FileExplorerRenderer::format_size(300), "0.3 KB");
+        assert_eq!(FileExplorerRenderer::format_size(500), "0.5 KB");
+        // KB range
+        assert_eq!(FileExplorerRenderer::format_size(1024), "1.0 KB");
+        assert_eq!(FileExplorerRenderer::format_size(1536), "1.5 KB");
+        assert_eq!(FileExplorerRenderer::format_size(10240), "10.0 KB");
+        // MB range
+        assert_eq!(FileExplorerRenderer::format_size(1024 * 1024), "1.0 MB");
+        assert_eq!(FileExplorerRenderer::format_size(1536 * 1024), "1.5 MB");
+        // GB range
         assert_eq!(
             FileExplorerRenderer::format_size(1024 * 1024 * 1024),
-            "1.00 GB"
+            "1.0 GB"
         );
     }
 }

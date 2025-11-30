@@ -481,9 +481,9 @@ fn test_command_palette_from_file_explorer() {
     use crossterm::event::{KeyCode, KeyModifiers};
     let mut harness = EditorTestHarness::new(80, 24).unwrap();
 
-    // Open file explorer
+    // Open file explorer (Ctrl+E)
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();

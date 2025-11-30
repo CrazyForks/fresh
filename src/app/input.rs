@@ -1069,7 +1069,7 @@ impl Editor {
             Action::FileExplorerPageUp => self.file_explorer_page_up(),
             Action::FileExplorerPageDown => self.file_explorer_page_down(),
             Action::FileExplorerExpand => self.file_explorer_toggle_expand(),
-            Action::FileExplorerCollapse => self.file_explorer_toggle_expand(), // Same as expand
+            Action::FileExplorerCollapse => self.file_explorer_collapse(),
             Action::FileExplorerOpen => self.file_explorer_open_file()?,
             Action::FileExplorerRefresh => self.file_explorer_refresh(),
             Action::FileExplorerNewFile => self.file_explorer_new_file(),

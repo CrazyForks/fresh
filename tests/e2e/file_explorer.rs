@@ -12,9 +12,9 @@ fn test_file_explorer_toggle() {
     harness.render().unwrap();
     let screen_before = harness.screen_to_string();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -29,9 +29,9 @@ fn test_file_explorer_toggle() {
         "Screen should show file explorer after toggle"
     );
 
-    // Toggle file explorer off with Ctrl+B
+    // Toggle file explorer off with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 
@@ -67,9 +67,9 @@ fn test_file_explorer_shows_directory_structure() {
     fs::create_dir(project_root.join("tests")).unwrap();
     fs::write(project_root.join("README.md"), "# Project").unwrap();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -101,9 +101,9 @@ fn test_file_explorer_navigation() {
     fs::write(project_root.join("file2.txt"), "File 2").unwrap();
     fs::write(project_root.join("file3.txt"), "File 3").unwrap();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -146,9 +146,9 @@ fn test_file_explorer_expand_collapse() {
     fs::write(project_root.join("src/lib.rs"), "// lib").unwrap();
     fs::write(project_root.join("src/main.rs"), "fn main() {}").unwrap();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -428,9 +428,9 @@ fn test_file_explorer_displays_opened_file_content() {
         "First file content should be visible on screen after opening"
     );
 
-    // Now open file explorer with Ctrl+B
+    // Now open file explorer with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -1345,9 +1345,9 @@ fn test_file_explorer_shows_keybinding_in_title() {
 
     let mut harness = EditorTestHarness::new(120, 40).unwrap();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -1366,7 +1366,7 @@ fn test_file_explorer_shows_keybinding_in_title() {
 
     // If a keybinding is shown, verify it's in the correct format
     if screen.contains("File Explorer (") {
-        // Keybinding format should be correct (e.g., "Ctrl+B", "Ctrl+Shift+B", etc.)
+        // Keybinding format should be correct (e.g., "Ctrl+E", "Ctrl+Shift+B", etc.)
         let has_valid_format = screen.contains("File Explorer (Ctrl+")
             || screen.contains("File Explorer (Alt+")
             || screen.contains("File Explorer (Shift+");
@@ -1387,7 +1387,7 @@ fn test_file_explorer_keybinding_when_focused() {
 
     // Toggle file explorer on
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -1415,9 +1415,9 @@ fn test_file_explorer_keybinding_matches_behavior() {
 
     let mut harness = EditorTestHarness::new(120, 40).unwrap();
 
-    // Toggle file explorer on with Ctrl+B
+    // Toggle file explorer on with Ctrl+E
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = harness.editor_mut().process_async_messages();
@@ -1433,7 +1433,7 @@ fn test_file_explorer_keybinding_matches_behavior() {
 
     // Toggle it off using the same key
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 

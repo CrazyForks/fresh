@@ -175,6 +175,35 @@ impl Editor {
         }
     }
 
+    /// Collapse behavior for left arrow:
+    /// - If on expanded directory: collapse it
+    /// - If on file or collapsed directory: select parent directory
+    pub fn file_explorer_collapse(&mut self) {
+        let Some(explorer) = &self.file_explorer else {
+            return;
+        };
+
+        let Some(selected_id) = explorer.get_selected() else {
+            return;
+        };
+
+        let Some(node) = explorer.tree().get_node(selected_id) else {
+            return;
+        };
+
+        // If expanded directory, collapse it
+        if node.is_dir() && node.is_expanded() {
+            self.file_explorer_toggle_expand();
+            return;
+        }
+
+        // Otherwise, select parent
+        if let Some(explorer) = &mut self.file_explorer {
+            explorer.select_parent();
+            explorer.update_scroll_for_selection();
+        }
+    }
+
     pub fn file_explorer_toggle_expand(&mut self) {
         let selected_id = if let Some(explorer) = &self.file_explorer {
             explorer.get_selected()

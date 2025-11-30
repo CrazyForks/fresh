@@ -592,7 +592,7 @@
     },
     {
       "comment": "Normal context - File explorer",
-      "key": "b",
+      "key": "e",
       "modifiers": ["ctrl"],
       "action": "toggle_file_explorer",
       "args": {},
@@ -1309,7 +1309,7 @@
       "when": "file_explorer"
     },
     {
-      "key": "b",
+      "key": "e",
       "modifiers": ["ctrl"],
       "action": "toggle_file_explorer",
       "args": {},

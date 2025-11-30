@@ -134,9 +134,9 @@ impl FileTree {
             node.state = NodeState::Loading;
         }
 
-        // Read directory contents
+        // Read directory contents with metadata (for file sizes)
         let path = self.get_node(id).unwrap().entry.path.clone();
-        let result = self.fs_manager.list_dir(path.clone()).await;
+        let result = self.fs_manager.list_dir_with_metadata(path.clone()).await;
 
         match result {
             Ok(entries) => {

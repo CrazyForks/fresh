@@ -244,9 +244,9 @@ fn test_mouse_click_file_explorer() {
     let test_file = project_dir.join("test.txt");
     fs::write(&test_file, "Test file content").unwrap();
 
-    // Open file explorer (Ctrl+b)
+    // Open file explorer (Ctrl+E)
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 
@@ -276,9 +276,9 @@ fn test_mouse_open_file_from_explorer() {
     let test_file = project_dir.join("clickme.txt");
     fs::write(&test_file, "I was opened by clicking!").unwrap();
 
-    // Open file explorer (Ctrl+b)
+    // Open file explorer (Ctrl+E)
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 
@@ -545,7 +545,7 @@ fn test_mouse_focus_after_file_explorer() {
 
     // Open file explorer
     harness
-        .send_key(KeyCode::Char('b'), KeyModifiers::CONTROL)
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
     harness.render().unwrap();
 
