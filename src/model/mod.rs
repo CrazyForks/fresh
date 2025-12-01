@@ -8,6 +8,7 @@ pub mod cursor;
 pub mod document_model;
 pub mod edit;
 pub mod event;
+pub mod line_diff;
 pub mod marker;
 pub mod marker_tree;
 pub mod piece_tree;

@@ -1080,6 +1080,61 @@ fn test_buffer_modified_single_line_in_multi_line_file() {
     );
 }
 
+/// Test that inserting a newline only marks the affected lines, not the entire rest of the buffer
+/// This is a regression test for a bug where line-by-line comparison would mark all subsequent
+/// lines as changed because they shifted down by one.
+#[test]
+fn test_buffer_modified_newline_insert_only_marks_affected_lines() {
+    let repo = GitTestRepo::new();
+
+    // Create and commit a file with multiple lines
+    let initial_content = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    repo.create_file("test.txt", initial_content);
+    repo.git_add_all();
+    repo.git_commit("Initial commit");
+
+    repo.setup_buffer_modified_plugin();
+
+    let mut harness = EditorTestHarness::with_config_and_working_dir(
+        120,
+        40,
+        Config::default(),
+        repo.path.clone(),
+    )
+    .unwrap();
+
+    open_file(&mut harness, &repo.path, "test.txt");
+    wait_for_async(&mut harness, 10);
+
+    // Go to end of line 2 and insert a newline (creating a new empty line)
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // line 2
+    harness.send_key(KeyCode::End, KeyModifiers::NONE).unwrap();
+    harness.send_key(KeyCode::Enter, KeyModifiers::NONE).unwrap();
+    harness.render().unwrap();
+    wait_for_async(&mut harness, 10);
+
+    let screen = harness.screen_to_string();
+    let indicators = get_indicator_lines(&screen, "│");
+    println!("=== After inserting newline ===\n{}", screen);
+    println!("Indicator lines: {:?}", indicators);
+
+    // Only lines 1-2 (0-indexed) should be marked - the modified line and the new line
+    // Lines 3, 4, 5 should NOT have indicators even though they shifted down
+    assert!(
+        indicators.len() <= 2,
+        "Only the modified lines should have indicators, not the entire rest of the buffer. Got {:?}",
+        indicators
+    );
+
+    // Specifically, lines 3+ should not have indicators
+    let has_line_3_plus = indicators.iter().any(|&line| line >= 3);
+    assert!(
+        !has_line_3_plus,
+        "Lines 3+ should not have indicators (they just shifted, content unchanged). Got {:?}",
+        indicators
+    );
+}
+
 /// Test that manually deleting added text (without undo) clears the indicator
 /// This tests that the diff compares actual content, not just tree structure
 #[test]

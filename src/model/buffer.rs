@@ -524,73 +524,23 @@ impl TextBuffer {
         Some(())
     }
 
-    /// Compare two content buffers line by line and return diff
+    /// Compare two content buffers line by line using LCS algorithm
     fn diff_content_by_lines(&self, saved: &[u8], current: &[u8]) -> PieceTreeDiff {
-        let mut changed_lines = Vec::new();
-        let mut saved_iter = saved.split(|&b| b == b'\n').peekable();
-        let mut current_iter = current.split(|&b| b == b'\n').peekable();
-        let mut line = 0;
+        let line_diff = crate::model::line_diff::diff_lines(saved, current);
 
-        loop {
-            match (saved_iter.next(), current_iter.next()) {
-                (Some(saved_line), Some(current_line)) => {
-                    if saved_line != current_line {
-                        changed_lines.push(line..line + 1);
-                    }
-                    line += 1;
-                }
-                (Some(_), None) => {
-                    // Saved has more lines - mark deletion point
-                    changed_lines.push(line..line + 1);
-                    break;
-                }
-                (None, Some(_)) => {
-                    // Current has more lines - mark all as added
-                    while current_iter.next().is_some() {
-                        changed_lines.push(line..line + 1);
-                        line += 1;
-                    }
-                    changed_lines.push(line..line + 1);
-                    break;
-                }
-                (None, None) => break,
-            }
-        }
-
-        if changed_lines.is_empty() {
+        if line_diff.equal {
             PieceTreeDiff {
                 equal: true,
                 byte_ranges: vec![0..0],
                 line_ranges: Some(vec![0..0]),
             }
         } else {
-            // Merge adjacent ranges
-            let merged = Self::merge_adjacent_ranges(changed_lines);
             PieceTreeDiff {
                 equal: false,
                 byte_ranges: vec![], // Not computed for line-based diff
-                line_ranges: Some(merged),
+                line_ranges: Some(line_diff.changed_lines),
             }
         }
-    }
-
-    fn merge_adjacent_ranges(ranges: Vec<std::ops::Range<usize>>) -> Vec<std::ops::Range<usize>> {
-        if ranges.is_empty() {
-            return ranges;
-        }
-        let mut merged = Vec::new();
-        let mut current = ranges[0].clone();
-
-        for range in ranges.into_iter().skip(1) {
-            if range.start <= current.end {
-                current.end = current.end.max(range.end);
-            } else {
-                merged.push(current);
-                current = range;
-            }
-        }
-        merged.push(current);
-        merged
     }
 
     /// Fall back to structure-based diff (original implementation)
