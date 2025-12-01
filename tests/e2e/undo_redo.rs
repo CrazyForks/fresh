@@ -202,3 +202,126 @@ fn test_undo_to_save_point_marks_buffer_unmodified() {
         cursor_pos
     );
 }
+
+/// Test that undo after "Save As" correctly marks buffer as unmodified (issue #191)
+///
+/// Scenario from issue:
+/// 1. Open a new empty buffer
+/// 2. Type some text
+/// 3. Save As... (first save)
+/// 4. Type more text
+/// 5. Undo back to state #3 -> should become not dirty when hitting saved state
+///
+/// The bug was that the buffer stayed dirty until undoing back to empty instead of
+/// stopping at the save point.
+#[test]
+fn test_undo_after_save_as_marks_buffer_unmodified() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let temp_dir = TempDir::new().unwrap();
+    let mut harness = EditorTestHarness::new(80, 24).unwrap();
+
+    // Step 1: Start with a new empty buffer (already the default state)
+    harness.assert_buffer_content("");
+
+    // Step 2: Type some text
+    harness.type_text("hello").unwrap();
+    harness.assert_buffer_content("hello");
+
+    // Buffer should be modified (not saved yet)
+    assert!(
+        harness.editor().active_state().buffer.is_modified(),
+        "Buffer should be modified after typing"
+    );
+
+    // Step 3: Save As...
+    // Trigger command palette with Ctrl+P
+    harness
+        .send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Type to search for Save As command
+    harness.type_text("Save File As").unwrap();
+
+    // Confirm with Enter
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Should show the Save As prompt
+    harness.assert_screen_contains("Save as:");
+
+    // Type the save path
+    let save_path = temp_dir.path().join("test_save_as.txt");
+    let save_path_str = save_path.to_str().unwrap();
+    harness.type_text(save_path_str).unwrap();
+
+    // Confirm with Enter
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Verify file was saved
+    assert!(save_path.exists(), "File should have been saved");
+    let saved_content = fs::read_to_string(&save_path).unwrap();
+    assert_eq!(saved_content, "hello", "Saved content should match");
+
+    // After Save As, buffer should NOT be modified
+    assert!(
+        !harness.editor().active_state().buffer.is_modified(),
+        "Buffer should NOT be modified immediately after Save As"
+    );
+
+    // Step 4: Type more text
+    harness.type_text(" world").unwrap();
+    harness.assert_buffer_content("hello world");
+
+    // Buffer should be modified again
+    assert!(
+        harness.editor().active_state().buffer.is_modified(),
+        "Buffer should be modified after typing more"
+    );
+
+    // Step 5: Undo back to the saved state
+    // We typed " world" which is 6 characters, each would be an event
+    // But they might be batched. Let's undo until we hit "hello"
+    for _ in 0..10 {
+        let content = harness.get_buffer_content();
+        if content == "hello" {
+            break;
+        }
+        harness
+            .send_key(KeyCode::Char('z'), KeyModifiers::CONTROL)
+            .unwrap();
+    }
+
+    // Should be back to "hello"
+    harness.assert_buffer_content("hello");
+
+    // KEY ASSERTION: Buffer should NOT be modified when we've undone back to the save point
+    assert!(
+        !harness.editor().active_state().buffer.is_modified(),
+        "Buffer should NOT be modified after undoing to the Save As point. \
+         The Save As should have marked the event log position as saved."
+    );
+
+    // Additional check: undo one more time should change content and still be at a modified state
+    // (since now we're before the save point)
+    harness
+        .send_key(KeyCode::Char('z'), KeyModifiers::CONTROL)
+        .unwrap();
+
+    // Content should have changed from "hello"
+    let content_after_extra_undo = harness.get_buffer_content();
+    if content_after_extra_undo != "hello" {
+        // If content changed, buffer should now be modified (we're before the save point)
+        assert!(
+            harness.editor().active_state().buffer.is_modified(),
+            "Buffer should be modified when undoing past the save point"
+        );
+    }
+}

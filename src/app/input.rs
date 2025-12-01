@@ -1450,6 +1450,9 @@ impl Editor {
                                     );
                                     self.buffer_metadata.insert(self.active_buffer, metadata);
 
+                                    // Mark the event log position as saved (for undo modified tracking)
+                                    self.active_event_log_mut().mark_saved();
+
                                     // Notify LSP of the new file if applicable
                                     self.notify_lsp_save();
 
