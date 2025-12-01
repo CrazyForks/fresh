@@ -1417,12 +1417,34 @@ struct TsBufferInfo {
     length: u32,
 }
 
+/// Change type for TypeScript
+#[derive(serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+enum TsChangeType {
+    Inserted,
+    Modified,
+    Deleted,
+}
+
+/// A single change with type
+#[derive(serde::Serialize)]
+struct TsLineChange {
+    /// Start line (inclusive)
+    start: u32,
+    /// End line (exclusive)
+    end: u32,
+    /// Type of change
+    change_type: TsChangeType,
+}
+
 /// Diff vs last save for a buffer
 #[derive(serde::Serialize)]
 struct TsBufferSavedDiff {
     equal: bool,
     byte_ranges: Vec<(u32, u32)>,
     line_ranges: Option<Vec<(u32, u32)>>,
+    /// Detailed changes with type information
+    changes: Vec<TsLineChange>,
 }
 
 /// Selection range
@@ -1486,6 +1508,8 @@ fn op_fresh_get_buffer_info(state: &mut OpState, buffer_id: u32) -> Option<TsBuf
 #[op2]
 #[serde]
 fn op_fresh_get_buffer_saved_diff(state: &mut OpState, buffer_id: u32) -> Option<TsBufferSavedDiff> {
+    use crate::services::plugins::api::ChangeType;
+
     let runtime_state = state
         .try_borrow::<Rc<RefCell<TsRuntimeState>>>()?
         .borrow()
@@ -1509,6 +1533,19 @@ fn op_fresh_get_buffer_saved_diff(state: &mut OpState, buffer_id: u32) -> Option
                 .map(|r| (r.start as u32, r.end as u32))
                 .collect()
         }),
+        changes: runtime_state
+            .changes
+            .iter()
+            .map(|c| TsLineChange {
+                start: c.range.start as u32,
+                end: c.range.end as u32,
+                change_type: match c.change_type {
+                    ChangeType::Inserted => TsChangeType::Inserted,
+                    ChangeType::Modified => TsChangeType::Modified,
+                    ChangeType::Deleted => TsChangeType::Deleted,
+                },
+            })
+            .collect(),
     })
 }
 

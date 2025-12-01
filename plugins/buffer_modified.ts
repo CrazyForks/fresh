@@ -6,12 +6,15 @@
  * Shows indicators in the gutter for lines that have been modified since the last save.
  * This tracks in-memory changes, not git changes.
  *
- * This plugin uses a simpler approach: it marks lines as modified when edits happen
- * (after_insert/after_delete hooks), and clears all modified markers on save.
- * It doesn't compare content - it just tracks which lines have been touched since save.
+ * Uses LCS (Longest Common Subsequence) diff algorithm to accurately detect:
+ * - Insertions: new lines added
+ * - Modifications: existing lines changed
+ * - Deletions: lines removed (marker shows where content was deleted)
  *
  * Indicator symbols:
- * - │ (blue): Line has been modified since last save
+ * - ┃ (green): Line was inserted (new content)
+ * - │ (blue): Line was modified (content changed)
+ * - ▔ (red): Deletion marker (content was removed above this line)
  */
 
 // =============================================================================
@@ -21,11 +24,23 @@
 const NAMESPACE = "buffer-modified";
 const PRIORITY = 5; // Lower than git-gutter (10) and diagnostics
 
-// Colors (RGB) - Blue to distinguish from git gutter (green/yellow/red)
-const COLOR = [100, 149, 237] as [number, number, number]; // Cornflower blue
+// Symbols and colors for different change types
+const INDICATORS = {
+  inserted: {
+    symbol: "┃",  // Thick vertical bar for additions
+    color: [80, 200, 120] as [number, number, number], // Green
+  },
+  modified: {
+    symbol: "│",  // Standard vertical bar for modifications
+    color: [100, 149, 237] as [number, number, number], // Cornflower blue
+  },
+  deleted: {
+    symbol: "▔",  // Top bar for deletions (content removed above)
+    color: [220, 80, 80] as [number, number, number], // Red
+  },
+} as const;
 
-// Symbol
-const SYMBOL = "│";
+type ChangeType = keyof typeof INDICATORS;
 
 // =============================================================================
 // Types
@@ -73,22 +88,25 @@ function clearModifiedState(bufferId: number): void {
  * Note: The indicator markers automatically track their byte positions,
  * so we don't need to manually track which lines are modified - we just
  * set indicators and they'll stay on the correct lines as edits happen.
+ *
+ * This is called before reapplyIndicatorsFromDiff which will override
+ * with the correct change types based on diff analysis.
  */
 function markLinesModified(bufferId: number, startLine: number, endLine: number): void {
   const state = bufferStates.get(bufferId);
   if (!state || !state.tracking) return;
 
-  // Add indicator for each affected line
-  // Note: If an indicator already exists at this position, it will be updated
+  // Add indicator for each affected line (temporary, will be updated by diff)
+  const indicator = INDICATORS.modified;
   for (let line = startLine; line <= endLine; line++) {
     editor.setLineIndicator(
       bufferId,
       line,
       NAMESPACE,
-      SYMBOL,
-      COLOR[0],
-      COLOR[1],
-      COLOR[2],
+      indicator.symbol,
+      indicator.color[0],
+      indicator.color[1],
+      indicator.color[2],
       PRIORITY
     );
   }
@@ -104,22 +122,46 @@ function reapplyIndicatorsFromDiff(bufferId: number): void {
     return;
   }
 
-  const ranges = diff.line_ranges;
-  // If line info is unavailable, leave existing indicators (best effort).
-  if (!ranges) return;
-
   // Reset namespace to drop stale indicators outside the changed ranges.
   editor.clearLineIndicators(bufferId, NAMESPACE);
+
+  // Use detailed changes if available (has type information)
+  if (diff.changes && diff.changes.length > 0) {
+    for (const change of diff.changes) {
+      const changeType = change.change_type as ChangeType;
+      const indicator = INDICATORS[changeType] || INDICATORS.modified;
+
+      for (let line = change.start; line < change.end; line++) {
+        editor.setLineIndicator(
+          bufferId,
+          line,
+          NAMESPACE,
+          indicator.symbol,
+          indicator.color[0],
+          indicator.color[1],
+          indicator.color[2],
+          PRIORITY
+        );
+      }
+    }
+    return;
+  }
+
+  // Fallback to line_ranges without type info (all shown as modified)
+  const ranges = diff.line_ranges;
+  if (!ranges) return;
+
+  const indicator = INDICATORS.modified;
   for (const [start, end] of ranges) {
     for (let line = start; line < end; line++) {
       editor.setLineIndicator(
         bufferId,
         line,
         NAMESPACE,
-        SYMBOL,
-        COLOR[0],
-        COLOR[1],
-        COLOR[2],
+        indicator.symbol,
+        indicator.color[0],
+        indicator.color[1],
+        indicator.color[2],
         PRIORITY
       );
     }

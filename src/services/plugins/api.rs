@@ -53,12 +53,29 @@ pub struct BufferInfo {
     pub length: usize,
 }
 
+/// Type of change for a line range
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeType {
+    Inserted,
+    Modified,
+    Deleted,
+}
+
+/// A change with its type and line range
+#[derive(Debug, Clone)]
+pub struct LineChange {
+    pub range: Range<usize>,
+    pub change_type: ChangeType,
+}
+
 /// Diff between current buffer content and last saved snapshot
 #[derive(Debug, Clone)]
 pub struct BufferSavedDiff {
     pub equal: bool,
     pub byte_ranges: Vec<Range<usize>>,
     pub line_ranges: Option<Vec<Range<usize>>>,
+    /// Detailed changes with type information (inserted, modified, deleted)
+    pub changes: Vec<LineChange>,
 }
 
 /// Information about the viewport

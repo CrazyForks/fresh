@@ -81,6 +81,9 @@ interface LayoutHints {
   column_guides?: number[] | null;
 }
 
+/** Type of change for buffer diff */
+type TsChangeType = "inserted" | "modified" | "deleted";
+
 /** Result from spawnProcess */
 interface SpawnResult {
   /** Complete stdout as string. Newlines preserved; trailing newline included. */
@@ -123,11 +126,23 @@ interface BufferInfo {
   length: number;
 }
 
+/** A single change with type */
+interface TsLineChange {
+  /** Start line (inclusive) */
+  start: number;
+  /** End line (exclusive) */
+  end: number;
+  /** Type of change */
+  change_type: TsChangeType;
+}
+
 /** Diff vs last save for a buffer */
 interface TsBufferSavedDiff {
   equal: boolean;
   byte_ranges: [number, number][];
   line_ranges?: [number, number][] | null;
+  /** Detailed changes with type information */
+  changes: TsLineChange[];
 }
 
 /** Selection range */

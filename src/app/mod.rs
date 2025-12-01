@@ -3830,6 +3830,22 @@ impl Editor {
                         equal: diff.equal,
                         byte_ranges: diff.byte_ranges.clone(),
                         line_ranges: diff.line_ranges.clone(),
+                        changes: diff
+                            .changes
+                            .iter()
+                            .map(|c| {
+                                use crate::model::line_diff::ChangeType as LDChangeType;
+                                use crate::services::plugins::api::ChangeType;
+                                crate::services::plugins::api::LineChange {
+                                    range: c.range.clone(),
+                                    change_type: match c.change_type {
+                                        LDChangeType::Inserted => ChangeType::Inserted,
+                                        LDChangeType::Modified => ChangeType::Modified,
+                                        LDChangeType::Deleted => ChangeType::Deleted,
+                                    },
+                                }
+                            })
+                            .collect(),
                     },
                 );
 

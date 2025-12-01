@@ -104,6 +104,24 @@ interface BufferInfo {
 | `modified` | Whether buffer has unsaved changes |
 | `length` | Buffer length in bytes |
 
+### TsLineChange
+
+A single change with type
+
+```typescript
+interface TsLineChange {
+  start: number;
+  end: number;
+  change_type: TsChangeType;
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `start` | Start line (inclusive) |
+| `end` | End line (exclusive) |
+| `change_type` | Type of change |
+
 ### TsBufferSavedDiff
 
 Diff vs last save for a buffer
@@ -113,8 +131,16 @@ interface TsBufferSavedDiff {
   equal: boolean;
   byte_ranges: [number, number][];
   line_ranges?: [number, number][] | null;
+  changes: TsLineChange[];
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `equal` | - |
+| `byte_ranges` | - |
+| `line_ranges` | - |
+| `changes` | Detailed changes with type information |
 
 ### SelectionRange
 

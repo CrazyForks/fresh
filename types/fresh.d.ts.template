@@ -81,3 +81,6 @@ interface LayoutHints {
   column_guides?: number[] | null;
 }
 
+/** Type of change for buffer diff */
+type TsChangeType = "inserted" | "modified" | "deleted";
+

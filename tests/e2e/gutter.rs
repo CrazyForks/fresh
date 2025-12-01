@@ -68,6 +68,28 @@ fn get_indicator_lines(screen: &str, symbol: &str) -> Vec<usize> {
     lines_with_indicator
 }
 
+/// Buffer modified indicator symbols (inserted, modified, deleted)
+const BUFFER_MODIFIED_INDICATORS: &[&str] = &["┃", "│", "▔"];
+
+/// Get the set of line numbers that have any buffer_modified indicator
+fn get_buffer_modified_lines(screen: &str) -> Vec<usize> {
+    let mut lines_with_indicator = Vec::new();
+    for (idx, line) in get_content_lines(screen).iter().enumerate() {
+        if let Some(first_char) = line.chars().next() {
+            let char_str = first_char.to_string();
+            if BUFFER_MODIFIED_INDICATORS.contains(&char_str.as_str()) {
+                lines_with_indicator.push(idx);
+            }
+        }
+    }
+    lines_with_indicator
+}
+
+/// Check if any buffer_modified indicator is present on screen
+fn has_buffer_modified_indicator(screen: &str) -> bool {
+    !get_buffer_modified_lines(screen).is_empty()
+}
+
 /// Get the line number shown in the gutter for a content line (parses the line number from gutter)
 /// Returns None if line number can't be parsed
 fn get_displayed_line_number(line: &str) -> Option<usize> {

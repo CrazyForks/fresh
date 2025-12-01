@@ -1,6 +1,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::model::line_diff::{ChangeType, LineChange};
 use crate::model::piece_tree::{LeafData, PieceTreeNode};
 
 /// Summary of differences between two piece tree roots.
@@ -12,6 +13,8 @@ pub struct PieceTreeDiff {
     pub byte_ranges: Vec<Range<usize>>,
     /// Changed line ranges in the "after" tree (exclusive end). `None` when line counts are unknown.
     pub line_ranges: Option<Vec<Range<usize>>>,
+    /// Detailed changes with type information (inserted, modified, deleted).
+    pub changes: Vec<LineChange>,
 }
 
 /// Compute a diff between two piece tree roots.
@@ -41,13 +44,14 @@ pub fn diff_piece_trees(
             equal: true,
             byte_ranges: vec![0..0],
             line_ranges: Some(vec![0..0]),
+            changes: vec![],
         };
     }
 
     let before_spans = with_doc_offsets(&before_leaves);
     let after_spans = with_doc_offsets(&after_leaves);
 
-    let total_after = sum_bytes(&after_leaves);
+    let _total_after = sum_bytes(&after_leaves);
 
     // Longest common prefix at byte granularity.
     let prefix = common_prefix_bytes(&before_spans, &after_spans);
@@ -57,12 +61,24 @@ pub fn diff_piece_trees(
     let ranges = collect_diff_ranges(&before_spans, &after_spans, prefix, suffix);
 
     // Map byte ranges to line ranges (best effort).
-    let line_ranges = line_ranges(&after_spans, &ranges, line_counter);
+    let line_ranges_result = line_ranges(&after_spans, &ranges, line_counter);
+
+    // Create changes from line ranges (structure-based diff doesn't have detailed types)
+    let changes = line_ranges_result
+        .as_ref()
+        .map(|ranges| {
+            ranges
+                .iter()
+                .map(|r| LineChange::new(r.clone(), ChangeType::Modified))
+                .collect()
+        })
+        .unwrap_or_default();
 
     PieceTreeDiff {
         equal: false,
         byte_ranges: ranges,
-        line_ranges,
+        line_ranges: line_ranges_result,
+        changes,
     }
 }
 

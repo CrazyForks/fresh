@@ -439,6 +439,7 @@ impl TextBuffer {
                 equal: true,
                 byte_ranges: vec![0..0],
                 line_ranges: Some(vec![0..0]),
+                changes: vec![],
             };
         }
 
@@ -533,12 +534,23 @@ impl TextBuffer {
                 equal: true,
                 byte_ranges: vec![0..0],
                 line_ranges: Some(vec![0..0]),
+                changes: vec![],
             }
         } else {
+            // Convert line_diff::LineChange to piece_tree_diff::LineChange
+            let changes = line_diff
+                .changes
+                .into_iter()
+                .map(|c| {
+                    crate::model::line_diff::LineChange::new(c.range, c.change_type)
+                })
+                .collect();
+
             PieceTreeDiff {
                 equal: false,
                 byte_ranges: vec![], // Not computed for line-based diff
                 line_ranges: Some(line_diff.changed_lines),
+                changes,
             }
         }
     }
