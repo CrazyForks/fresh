@@ -1,5 +1,7 @@
 /// <reference path="../types/fresh.d.ts" />
 
+import { PanelManager, NavigationController } from "./lib/index.ts";
+
 /**
  * Find References Plugin (TypeScript)
  *
@@ -8,17 +10,14 @@
  * Uses cursor movement for navigation (Up/Down/j/k work naturally).
  */
 
-// Panel state
-let panelOpen = false;
-let referencesBufferId: number | null = null;
-let sourceSplitId: number | null = null;
-let referencesSplitId: number | null = null; // Track the split we created
-let currentReferences: ReferenceItem[] = [];
-let currentSymbol: string = "";
-let lineCache: Map<string, string[]> = new Map(); // Cache file contents
-
 // Maximum number of results to display
 const MAX_RESULTS = 100;
+
+// Line cache for file contents
+let lineCache: Map<string, string[]> = new Map();
+
+// Current symbol being searched
+let currentSymbol: string = "";
 
 // Reference item structure
 interface ReferenceItem {
@@ -27,6 +26,13 @@ interface ReferenceItem {
   column: number;
   lineText?: string; // Cached line text
 }
+
+// Panel and navigation state
+const panel = new PanelManager("*References*", "references-list");
+const nav = new NavigationController<ReferenceItem>({
+  itemLabel: "Reference",
+  wrap: false,
+});
 
 // Define the references mode with minimal keybindings
 // Navigation uses normal cursor movement (arrows, j/k work naturally)
@@ -75,9 +81,10 @@ function formatReference(item: ReferenceItem): string {
 // Build entries for the virtual buffer
 function buildPanelEntries(): TextPropertyEntry[] {
   const entries: TextPropertyEntry[] = [];
+  const references = nav.getItems();
 
   // Header with symbol name
-  const totalCount = currentReferences.length;
+  const totalCount = references.length;
   const limitNote = totalCount >= MAX_RESULTS ? ` (limited to ${MAX_RESULTS})` : "";
   const symbolDisplay = currentSymbol ? `'${currentSymbol}'` : "symbol";
   entries.push({
@@ -85,15 +92,15 @@ function buildPanelEntries(): TextPropertyEntry[] {
     properties: { type: "header" },
   });
 
-  if (currentReferences.length === 0) {
+  if (references.length === 0) {
     entries.push({
       text: "  No references found\n",
       properties: { type: "empty" },
     });
   } else {
     // Add each reference
-    for (let i = 0; i < currentReferences.length; i++) {
-      const ref = currentReferences[i];
+    for (let i = 0; i < references.length; i++) {
+      const ref = references[i];
       entries.push({
         text: formatReference(ref),
         properties: {
@@ -164,42 +171,22 @@ async function loadLineTexts(references: ReferenceItem[]): Promise<void> {
 
 // Show references panel
 async function showReferencesPanel(symbol: string, references: ReferenceItem[]): Promise<void> {
-  // Only save the source split ID if panel is not already open
-  // (avoid overwriting it with the references split ID on subsequent calls)
-  if (!panelOpen) {
-    sourceSplitId = editor.getActiveSplitId();
-  }
-
   // Limit results
   const limitedRefs = references.slice(0, MAX_RESULTS);
 
-  // Set references and symbol
+  // Set symbol and references in navigation controller
   currentSymbol = symbol;
-  currentReferences = limitedRefs;
+  nav.setItems(limitedRefs);
 
   // Load line texts for preview
-  await loadLineTexts(currentReferences);
+  await loadLineTexts(limitedRefs);
 
-  // Build panel entries
-  const entries = buildPanelEntries();
-
-  // Create or update virtual buffer in horizontal split
-  // The panel_id mechanism will reuse the existing buffer/split if it exists
+  // Open or update panel using PanelManager
   try {
-    referencesBufferId = await editor.createVirtualBufferInSplit({
-      name: "*References*",
-      mode: "references-list",
-      read_only: true,
-      entries: entries,
-      ratio: 0.7, // Original pane takes 70%, references takes 30%
-      panel_id: "references-panel",
-      show_line_numbers: false,
-      show_cursors: true, // Enable cursor for navigation
+    await panel.open({
+      entries: buildPanelEntries(),
+      ratio: 0.3,
     });
-
-    panelOpen = true;
-    // Track the references split (it becomes active after creation)
-    referencesSplitId = editor.getActiveSplitId();
 
     const limitMsg = references.length > MAX_RESULTS
       ? ` (showing first ${MAX_RESULTS})`
@@ -207,11 +194,11 @@ async function showReferencesPanel(symbol: string, references: ReferenceItem[]):
     editor.setStatus(
       `Found ${references.length} reference(s)${limitMsg} - ↑/↓ navigate, RET jump, q close`
     );
-    editor.debug(`References panel opened with buffer ID ${referencesBufferId}, split ID ${referencesSplitId}`);
+    editor.debug(`References panel opened with buffer ID ${panel.bufferId}, split ID ${panel.splitId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     editor.setStatus("Failed to open references panel");
-    editor.debug(`ERROR: createVirtualBufferInSplit failed: ${errorMessage}`);
+    editor.debug(`ERROR: panel.open failed: ${errorMessage}`);
   }
 }
 
@@ -242,7 +229,7 @@ globalThis.on_references_cursor_moved = function (data: {
   new_position: number;
 }): void {
   // Only handle cursor movement in our references buffer
-  if (referencesBufferId === null || data.buffer_id !== referencesBufferId) {
+  if (panel.bufferId === null || data.buffer_id !== panel.bufferId) {
     return;
   }
 
@@ -253,8 +240,8 @@ globalThis.on_references_cursor_moved = function (data: {
   // Line 0 is header, lines 1 to N are references
   const refIndex = cursorLine - 1;
 
-  if (refIndex >= 0 && refIndex < currentReferences.length) {
-    editor.setStatus(`Reference ${refIndex + 1}/${currentReferences.length}`);
+  if (refIndex >= 0 && refIndex < nav.count) {
+    nav.selectedIndex = refIndex;
   }
 };
 
@@ -263,24 +250,12 @@ editor.on("cursor_moved", "on_references_cursor_moved");
 
 // Hide references panel
 globalThis.hide_references_panel = function (): void {
-  if (!panelOpen) {
+  if (!panel.isOpen) {
     return;
   }
 
-  if (referencesBufferId !== null) {
-    editor.closeBuffer(referencesBufferId);
-  }
-
-  // Close the split we created (if it exists and is different from source)
-  if (referencesSplitId !== null && referencesSplitId !== sourceSplitId) {
-    editor.closeSplit(referencesSplitId);
-  }
-
-  panelOpen = false;
-  referencesBufferId = null;
-  sourceSplitId = null;
-  referencesSplitId = null;
-  currentReferences = [];
+  panel.close();
+  nav.reset();
   currentSymbol = "";
   lineCache.clear();
   editor.setStatus("References panel closed");
@@ -288,23 +263,23 @@ globalThis.hide_references_panel = function (): void {
 
 // Navigation: go to selected reference (based on cursor position)
 globalThis.references_goto = function (): void {
-  if (currentReferences.length === 0) {
+  if (nav.isEmpty) {
     editor.setStatus("No references to jump to");
     return;
   }
 
-  if (sourceSplitId === null) {
+  if (panel.sourceSplitId === null) {
     editor.setStatus("Source split not available");
     return;
   }
 
-  if (referencesBufferId === null) {
+  if (panel.bufferId === null) {
     return;
   }
 
   // Get text properties at cursor position
-  const props = editor.getTextPropertiesAtCursor(referencesBufferId);
-  editor.debug(`references_goto: props.length=${props.length}, referencesBufferId=${referencesBufferId}, sourceSplitId=${sourceSplitId}`);
+  const props = editor.getTextPropertiesAtCursor(panel.bufferId);
+  editor.debug(`references_goto: props.length=${props.length}, bufferId=${panel.bufferId}, sourceSplitId=${panel.sourceSplitId}`);
 
   if (props.length > 0) {
     editor.debug(`references_goto: props[0]=${JSON.stringify(props[0])}`);
@@ -312,10 +287,10 @@ globalThis.references_goto = function (): void {
       | { file: string; line: number; column: number }
       | undefined;
     if (location) {
-      editor.debug(`references_goto: opening ${location.file}:${location.line}:${location.column} in split ${sourceSplitId}`);
+      editor.debug(`references_goto: opening ${location.file}:${location.line}:${location.column} in split ${panel.sourceSplitId}`);
       // Open file in the source split, not the references split
       editor.openFileInSplit(
-        sourceSplitId,
+        panel.sourceSplitId,
         location.file,
         location.line,
         location.column || 0
