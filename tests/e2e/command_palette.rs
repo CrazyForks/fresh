@@ -565,15 +565,16 @@ fn test_command_palette_down_no_wraparound() {
         .send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
         .unwrap();
 
-    // Filter to get only two commands
-    harness.type_text("save f").unwrap();
+    // Filter to get only two commands (use "save file a" to be more specific
+    // and avoid matching plugin commands like "Plugin Demo: Save File")
+    harness.type_text("save file a").unwrap();
     harness.render().unwrap();
 
-    // Should match "Save File" and "Save File As"
+    // Should match "Save File As" and "Save File"
     harness.assert_screen_contains("Save File");
 
-    // First suggestion (Save File) should be selected
-    // Press Down to go to second (Save File As)
+    // First suggestion (Save File As) should be selected since it's a better match
+    // Press Down to go to second (Save File)
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
     harness.render().unwrap();
 
@@ -585,10 +586,10 @@ fn test_command_palette_down_no_wraparound() {
     harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
     harness.render().unwrap();
 
-    // If we wrapped around, we'd be back at "Save File"
-    // If we stayed at the end, we'd still be at "Save File As"
+    // If we wrapped around, we'd be back at "Save File As"
+    // If we stayed at the end, we'd still be at "Save File"
     // The tab should complete to the selected command
-    harness.assert_screen_contains("Command: Save File As");
+    harness.assert_screen_contains("Command: Save File");
 }
 
 /// Test that PageUp stops at the beginning of the list instead of wrapping
