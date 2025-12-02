@@ -3055,11 +3055,25 @@ fn test_lsp_find_references() -> std::io::Result<()> {
     let temp_dir = tempfile::TempDir::new()?;
     let project_root = temp_dir.path().to_path_buf();
 
-    // Create plugins directory and copy find_references plugin
+    // Create plugins directory and copy find_references plugin with its lib dependency
     let plugins_dir = project_root.join("plugins");
     std::fs::create_dir(&plugins_dir)?;
 
-    let plugin_source = std::env::current_dir()?.join("plugins/find_references.ts");
+    let cwd = std::env::current_dir()?;
+
+    // Copy the plugins/lib directory (find_references.ts imports from it)
+    let lib_src = cwd.join("plugins/lib");
+    let lib_dest = plugins_dir.join("lib");
+    std::fs::create_dir(&lib_dest)?;
+    for entry in std::fs::read_dir(&lib_src)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "ts").unwrap_or(false) {
+            std::fs::copy(&path, lib_dest.join(path.file_name().unwrap()))?;
+        }
+    }
+
+    let plugin_source = cwd.join("plugins/find_references.ts");
     let plugin_dest = plugins_dir.join("find_references.ts");
     std::fs::copy(&plugin_source, &plugin_dest)?;
 
@@ -3306,11 +3320,25 @@ fn main() {
     let main_rs_path = src_dir.join("main.rs");
     std::fs::write(&main_rs_path, main_rs)?;
 
-    // Create plugins directory and copy find_references plugin
+    // Create plugins directory and copy find_references plugin with its lib dependency
     let plugins_dir = project_root.join("plugins");
     std::fs::create_dir(&plugins_dir)?;
 
-    let plugin_source = std::env::current_dir()?.join("plugins/find_references.ts");
+    let cwd = std::env::current_dir()?;
+
+    // Copy the plugins/lib directory (find_references.ts imports from it)
+    let lib_src = cwd.join("plugins/lib");
+    let lib_dest = plugins_dir.join("lib");
+    std::fs::create_dir(&lib_dest)?;
+    for entry in std::fs::read_dir(&lib_src)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "ts").unwrap_or(false) {
+            std::fs::copy(&path, lib_dest.join(path.file_name().unwrap()))?;
+        }
+    }
+
+    let plugin_source = cwd.join("plugins/find_references.ts");
     let plugin_dest = plugins_dir.join("find_references.ts");
     std::fs::copy(&plugin_source, &plugin_dest)?;
 
