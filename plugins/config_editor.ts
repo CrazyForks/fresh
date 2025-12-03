@@ -1,0 +1,1524 @@
+/// <reference path="../types/fresh.d.ts" />
+
+/**
+ * Config Editor Plugin - Schema-driven configuration editor
+ *
+ * Provides an interactive UI for editing Fresh's config file with:
+ * - Automatic adaptation to the full JSON schema
+ * - Type-appropriate widgets (toggles for booleans, dropdowns for enums, etc.)
+ * - Support for "keep default" vs custom values
+ * - Nested object navigation
+ *
+ * Inspired by Emacs Customize mode
+ */
+
+// =============================================================================
+// Types and Schema System
+// =============================================================================
+
+/**
+ * Field types supported by the config editor
+ */
+type FieldType = "boolean" | "number" | "string" | "enum" | "array" | "object";
+
+/**
+ * Schema definition for a config field
+ */
+interface FieldSchema {
+  /** Field type */
+  type: FieldType;
+  /** Human-readable description */
+  description: string;
+  /** Default value (undefined means no default/required) */
+  defaultValue?: unknown;
+  /** For enums: list of valid options */
+  enumOptions?: string[];
+  /** For numbers: minimum value */
+  min?: number;
+  /** For numbers: maximum value */
+  max?: number;
+  /** For arrays: schema of array items */
+  itemSchema?: FieldSchema;
+  /** For objects: schema of nested fields */
+  nestedSchema?: Record<string, FieldSchema>;
+  /** Whether this field is optional */
+  optional?: boolean;
+}
+
+/**
+ * Represents a displayable config field with its path and value
+ */
+interface ConfigField {
+  /** Dot-separated path (e.g., "editor.tab_size") */
+  path: string;
+  /** Display name */
+  name: string;
+  /** Field schema */
+  schema: FieldSchema;
+  /** Current value */
+  value: unknown;
+  /** Whether using default value */
+  isDefault: boolean;
+  /** Indentation level */
+  depth: number;
+  /** Whether this is a section header */
+  isSection: boolean;
+  /** Whether section is expanded */
+  expanded?: boolean;
+}
+
+// =============================================================================
+// Configuration Schema Definition
+// =============================================================================
+
+/**
+ * Complete schema for Fresh's configuration file
+ * This schema drives the entire config editor UI
+ */
+const CONFIG_SCHEMA: Record<string, FieldSchema> = {
+  theme: {
+    type: "string",
+    description: "Color theme name",
+    defaultValue: "high-contrast",
+  },
+
+  editor: {
+    type: "object",
+    description: "Editor behavior settings",
+    nestedSchema: {
+      tab_size: {
+        type: "number",
+        description: "Number of spaces per tab",
+        defaultValue: 4,
+        min: 1,
+        max: 16,
+      },
+      auto_indent: {
+        type: "boolean",
+        description: "Automatically indent new lines",
+        defaultValue: true,
+      },
+      line_numbers: {
+        type: "boolean",
+        description: "Show line numbers in gutter",
+        defaultValue: true,
+      },
+      relative_line_numbers: {
+        type: "boolean",
+        description: "Show relative line numbers",
+        defaultValue: false,
+      },
+      scroll_offset: {
+        type: "number",
+        description: "Lines to keep visible above/below cursor",
+        defaultValue: 3,
+        min: 0,
+        max: 100,
+      },
+      syntax_highlighting: {
+        type: "boolean",
+        description: "Enable syntax highlighting",
+        defaultValue: true,
+      },
+      line_wrap: {
+        type: "boolean",
+        description: "Wrap long lines",
+        defaultValue: true,
+      },
+      highlight_timeout_ms: {
+        type: "number",
+        description: "Syntax highlighting timeout (ms)",
+        defaultValue: 5,
+        min: 1,
+        max: 1000,
+      },
+      snapshot_interval: {
+        type: "number",
+        description: "Undo snapshot interval (operations)",
+        defaultValue: 100,
+        min: 1,
+        max: 1000,
+      },
+      large_file_threshold_bytes: {
+        type: "number",
+        description: "Size threshold for large file optimizations",
+        defaultValue: 1048576,
+        min: 0,
+      },
+      estimated_line_length: {
+        type: "number",
+        description: "Estimated average line length for large files",
+        defaultValue: 80,
+        min: 1,
+        max: 1000,
+      },
+      enable_inlay_hints: {
+        type: "boolean",
+        description: "Show LSP inlay hints (types, parameters)",
+        defaultValue: true,
+      },
+      recovery_enabled: {
+        type: "boolean",
+        description: "Enable auto-save for crash recovery",
+        defaultValue: true,
+      },
+      auto_save_interval_secs: {
+        type: "number",
+        description: "Auto-save interval in seconds (0 = disabled)",
+        defaultValue: 2,
+        min: 0,
+        max: 3600,
+      },
+    },
+  },
+
+  file_explorer: {
+    type: "object",
+    description: "File explorer settings",
+    nestedSchema: {
+      respect_gitignore: {
+        type: "boolean",
+        description: "Hide files matching .gitignore patterns",
+        defaultValue: true,
+      },
+      show_hidden: {
+        type: "boolean",
+        description: "Show hidden files (starting with .)",
+        defaultValue: false,
+      },
+      show_gitignored: {
+        type: "boolean",
+        description: "Show files ignored by git",
+        defaultValue: false,
+      },
+      custom_ignore_patterns: {
+        type: "array",
+        description: "Additional patterns to ignore",
+        defaultValue: [],
+        itemSchema: {
+          type: "string",
+          description: "Glob pattern to ignore",
+        },
+      },
+      width: {
+        type: "number",
+        description: "File explorer width (0.0 to 1.0 = percentage)",
+        defaultValue: 0.3,
+        min: 0.1,
+        max: 0.9,
+      },
+    },
+  },
+
+  active_keybinding_map: {
+    type: "enum",
+    description: "Active keybinding style",
+    defaultValue: "default",
+    enumOptions: ["default", "emacs", "vscode"],
+  },
+};
+
+/**
+ * Schema template for language configuration entries
+ */
+const LANGUAGE_CONFIG_SCHEMA: Record<string, FieldSchema> = {
+  extensions: {
+    type: "array",
+    description: "File extensions for this language",
+    itemSchema: { type: "string", description: "File extension" },
+  },
+  grammar: {
+    type: "string",
+    description: "Tree-sitter grammar name",
+  },
+  comment_prefix: {
+    type: "string",
+    description: "Single-line comment prefix",
+    optional: true,
+  },
+  auto_indent: {
+    type: "boolean",
+    description: "Enable auto-indent for this language",
+    defaultValue: true,
+  },
+  highlighter: {
+    type: "enum",
+    description: "Preferred syntax highlighter",
+    defaultValue: "auto",
+    enumOptions: ["auto", "tree-sitter", "textmate"],
+  },
+  textmate_grammar: {
+    type: "string",
+    description: "Path to custom TextMate grammar file",
+    optional: true,
+  },
+};
+
+/**
+ * Schema template for LSP server configuration entries
+ */
+const LSP_CONFIG_SCHEMA: Record<string, FieldSchema> = {
+  command: {
+    type: "string",
+    description: "LSP server command",
+  },
+  args: {
+    type: "array",
+    description: "Command-line arguments",
+    defaultValue: [],
+    itemSchema: { type: "string", description: "Argument" },
+  },
+  enabled: {
+    type: "boolean",
+    description: "Enable this LSP server",
+    defaultValue: true,
+  },
+  auto_start: {
+    type: "boolean",
+    description: "Start server automatically on file open",
+    defaultValue: false,
+  },
+};
+
+// =============================================================================
+// State Management
+// =============================================================================
+
+interface ConfigEditorState {
+  isOpen: boolean;
+  bufferId: number | null;
+  splitId: number | null;
+  sourceSplitId: number | null;
+  sourceBufferId: number | null;
+  /** Original config from file */
+  originalConfig: Record<string, unknown>;
+  /** Working copy with modifications */
+  workingConfig: Record<string, unknown>;
+  /** Expanded section paths */
+  expandedSections: Set<string>;
+  /** Flat list of visible fields */
+  visibleFields: ConfigField[];
+  /** Current cursor line (0-indexed field index) */
+  selectedIndex: number;
+  /** Path to config file */
+  configPath: string;
+  /** Whether there are unsaved changes */
+  hasChanges: boolean;
+  /** Cached content for highlighting */
+  cachedContent: string;
+}
+
+const state: ConfigEditorState = {
+  isOpen: false,
+  bufferId: null,
+  splitId: null,
+  sourceSplitId: null,
+  sourceBufferId: null,
+  originalConfig: {},
+  workingConfig: {},
+  expandedSections: new Set(["editor", "file_explorer"]),
+  visibleFields: [],
+  selectedIndex: 0,
+  configPath: "",
+  hasChanges: false,
+  cachedContent: "",
+};
+
+// =============================================================================
+// Color Definitions
+// =============================================================================
+
+const colors = {
+  sectionHeader: [255, 200, 100] as [number, number, number],   // Gold
+  fieldName: [200, 200, 255] as [number, number, number],       // Light blue
+  defaultValue: [150, 150, 150] as [number, number, number],    // Gray (dimmed)
+  customValue: [100, 255, 100] as [number, number, number],     // Green
+  boolTrue: [100, 255, 150] as [number, number, number],        // Green
+  boolFalse: [255, 150, 150] as [number, number, number],       // Red
+  enumValue: [200, 150, 255] as [number, number, number],       // Purple
+  numberValue: [255, 200, 150] as [number, number, number],     // Orange
+  stringValue: [150, 220, 150] as [number, number, number],     // Light green
+  selected: [60, 60, 100] as [number, number, number],          // Selection bg
+  description: [120, 120, 120] as [number, number, number],     // Dim gray
+  modified: [255, 255, 100] as [number, number, number],        // Yellow
+  footer: [100, 100, 100] as [number, number, number],          // Gray
+};
+
+// =============================================================================
+// Mode Definition
+// =============================================================================
+
+editor.defineMode(
+  "config-editor",
+  "normal",
+  [
+    ["Return", "config_editor_edit_field"],
+    ["Space", "config_editor_toggle_or_edit"],
+    ["Tab", "config_editor_toggle_section"],
+    ["d", "config_editor_reset_to_default"],
+    ["s", "config_editor_save"],
+    ["q", "config_editor_close"],
+    ["Escape", "config_editor_close"],
+    ["r", "config_editor_reload"],
+    ["?", "config_editor_show_help"],
+  ],
+  true // read-only
+);
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Get a nested value from an object using a dot-separated path
+ */
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+/**
+ * Set a nested value in an object using a dot-separated path
+ */
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let current = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!(part in current) || typeof current[part] !== "object") {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+  current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Delete a nested value from an object
+ */
+function deleteNestedValue(obj: Record<string, unknown>, path: string): void {
+  const parts = path.split(".");
+  let current = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!(part in current)) return;
+    current = current[part] as Record<string, unknown>;
+  }
+  delete current[parts[parts.length - 1]];
+}
+
+/**
+ * Deep clone an object
+ */
+function deepClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+/**
+ * Check if two values are equal (deep comparison)
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Format a value for display
+ */
+function formatValue(value: unknown, schema: FieldSchema): string {
+  if (value === undefined || value === null) {
+    return "<not set>";
+  }
+  switch (schema.type) {
+    case "boolean":
+      return value ? "[x] true" : "[ ] false";
+    case "enum":
+      return `[▼] ${value}`;
+    case "number":
+      return String(value);
+    case "string":
+      if (typeof value === "string" && value.length > 40) {
+        return `"${value.substring(0, 37)}..."`;
+      }
+      return `"${value}"`;
+    case "array":
+      if (Array.isArray(value)) {
+        if (value.length === 0) return "[]";
+        if (value.length <= 3) return `[${value.map(v => JSON.stringify(v)).join(", ")}]`;
+        return `[${value.length} items]`;
+      }
+      return "[]";
+    case "object":
+      return "{...}";
+    default:
+      return String(value);
+  }
+}
+
+/**
+ * Get the default value for a field
+ */
+function getDefaultValue(schema: FieldSchema): unknown {
+  if (schema.defaultValue !== undefined) {
+    return schema.defaultValue;
+  }
+  switch (schema.type) {
+    case "boolean": return false;
+    case "number": return 0;
+    case "string": return "";
+    case "array": return [];
+    case "object": return {};
+    case "enum": return schema.enumOptions?.[0] ?? "";
+    default: return null;
+  }
+}
+
+// =============================================================================
+// Config Loading and Saving
+// =============================================================================
+
+/**
+ * Find the user's config file path
+ */
+function findConfigPath(): string {
+  const cwd = editor.getCwd();
+
+  // Try local config first
+  const localConfig = editor.pathJoin([cwd, "config.json"]);
+  if (editor.fileExists(localConfig)) {
+    return localConfig;
+  }
+
+  // Try ~/.config/fresh/config.json
+  const home = editor.getEnv("HOME");
+  if (home) {
+    const userConfig = editor.pathJoin([home, ".config", "fresh", "config.json"]);
+    if (editor.fileExists(userConfig)) {
+      return userConfig;
+    }
+    // Return this path even if it doesn't exist - we'll create it
+    return userConfig;
+  }
+
+  // Fallback to local
+  return localConfig;
+}
+
+/**
+ * Load config from file
+ */
+async function loadConfig(): Promise<Record<string, unknown>> {
+  const configPath = findConfigPath();
+  state.configPath = configPath;
+
+  try {
+    const content = await editor.readFile(configPath);
+    return JSON.parse(content);
+  } catch (e) {
+    // Return empty config if file doesn't exist
+    editor.debug(`Config file not found at ${configPath}, using defaults`);
+    return {};
+  }
+}
+
+/**
+ * Save config to file
+ */
+async function saveConfig(): Promise<boolean> {
+  try {
+    const content = JSON.stringify(state.workingConfig, null, 2);
+    await editor.writeFile(state.configPath, content);
+    state.originalConfig = deepClone(state.workingConfig);
+    state.hasChanges = false;
+    return true;
+  } catch (e) {
+    editor.setStatus(`Failed to save: ${e}`);
+    return false;
+  }
+}
+
+// =============================================================================
+// Field Building
+// =============================================================================
+
+/**
+ * Build the flat list of visible fields based on schema and expanded sections
+ */
+function buildVisibleFields(): ConfigField[] {
+  const fields: ConfigField[] = [];
+
+  // Add each top-level config section
+  for (const [key, schema] of Object.entries(CONFIG_SCHEMA)) {
+    const path = key;
+    const value = getNestedValue(state.workingConfig, path);
+    const defaultValue = getDefaultValue(schema);
+    const isDefault = value === undefined || deepEqual(value, defaultValue);
+
+    if (schema.type === "object" && schema.nestedSchema) {
+      // Section header
+      const expanded = state.expandedSections.has(path);
+      fields.push({
+        path,
+        name: key,
+        schema,
+        value,
+        isDefault,
+        depth: 0,
+        isSection: true,
+        expanded,
+      });
+
+      // Add nested fields if expanded
+      if (expanded) {
+        for (const [nestedKey, nestedSchema] of Object.entries(schema.nestedSchema)) {
+          const nestedPath = `${path}.${nestedKey}`;
+          const nestedValue = getNestedValue(state.workingConfig, nestedPath);
+          const nestedDefault = getDefaultValue(nestedSchema);
+          const nestedIsDefault = nestedValue === undefined || deepEqual(nestedValue, nestedDefault);
+
+          fields.push({
+            path: nestedPath,
+            name: nestedKey,
+            schema: nestedSchema,
+            value: nestedValue ?? nestedDefault,
+            isDefault: nestedIsDefault,
+            depth: 1,
+            isSection: false,
+          });
+        }
+      }
+    } else {
+      // Top-level non-object field
+      fields.push({
+        path,
+        name: key,
+        schema,
+        value: value ?? defaultValue,
+        isDefault,
+        depth: 0,
+        isSection: false,
+      });
+    }
+  }
+
+  // Add languages section
+  const languagesExpanded = state.expandedSections.has("languages");
+  fields.push({
+    path: "languages",
+    name: "languages",
+    schema: { type: "object", description: "Language-specific settings", nestedSchema: {} },
+    value: state.workingConfig.languages,
+    isDefault: !state.workingConfig.languages,
+    depth: 0,
+    isSection: true,
+    expanded: languagesExpanded,
+  });
+
+  if (languagesExpanded && state.workingConfig.languages) {
+    const languages = state.workingConfig.languages as Record<string, unknown>;
+    for (const lang of Object.keys(languages).sort()) {
+      fields.push({
+        path: `languages.${lang}`,
+        name: lang,
+        schema: { type: "object", description: `${lang} configuration`, nestedSchema: LANGUAGE_CONFIG_SCHEMA },
+        value: languages[lang],
+        isDefault: false,
+        depth: 1,
+        isSection: true,
+        expanded: state.expandedSections.has(`languages.${lang}`),
+      });
+
+      if (state.expandedSections.has(`languages.${lang}`)) {
+        const langConfig = languages[lang] as Record<string, unknown>;
+        for (const [fieldKey, fieldSchema] of Object.entries(LANGUAGE_CONFIG_SCHEMA)) {
+          const fieldPath = `languages.${lang}.${fieldKey}`;
+          const fieldValue = langConfig[fieldKey];
+          const fieldDefault = getDefaultValue(fieldSchema);
+
+          fields.push({
+            path: fieldPath,
+            name: fieldKey,
+            schema: fieldSchema,
+            value: fieldValue ?? fieldDefault,
+            isDefault: fieldValue === undefined,
+            depth: 2,
+            isSection: false,
+          });
+        }
+      }
+    }
+  }
+
+  // Add LSP section
+  const lspExpanded = state.expandedSections.has("lsp");
+  fields.push({
+    path: "lsp",
+    name: "lsp",
+    schema: { type: "object", description: "LSP server settings", nestedSchema: {} },
+    value: state.workingConfig.lsp,
+    isDefault: !state.workingConfig.lsp,
+    depth: 0,
+    isSection: true,
+    expanded: lspExpanded,
+  });
+
+  if (lspExpanded && state.workingConfig.lsp) {
+    const lspConfigs = state.workingConfig.lsp as Record<string, unknown>;
+    for (const lang of Object.keys(lspConfigs).sort()) {
+      fields.push({
+        path: `lsp.${lang}`,
+        name: lang,
+        schema: { type: "object", description: `${lang} LSP server`, nestedSchema: LSP_CONFIG_SCHEMA },
+        value: lspConfigs[lang],
+        isDefault: false,
+        depth: 1,
+        isSection: true,
+        expanded: state.expandedSections.has(`lsp.${lang}`),
+      });
+
+      if (state.expandedSections.has(`lsp.${lang}`)) {
+        const lspConfig = lspConfigs[lang] as Record<string, unknown>;
+        for (const [fieldKey, fieldSchema] of Object.entries(LSP_CONFIG_SCHEMA)) {
+          const fieldPath = `lsp.${lang}.${fieldKey}`;
+          const fieldValue = lspConfig[fieldKey];
+          const fieldDefault = getDefaultValue(fieldSchema);
+
+          fields.push({
+            path: fieldPath,
+            name: fieldKey,
+            schema: fieldSchema,
+            value: fieldValue ?? fieldDefault,
+            isDefault: fieldValue === undefined,
+            depth: 2,
+            isSection: false,
+          });
+        }
+      }
+    }
+  }
+
+  return fields;
+}
+
+// =============================================================================
+// UI Building
+// =============================================================================
+
+/**
+ * Build text entries for the virtual buffer display
+ */
+function buildDisplayEntries(): TextPropertyEntry[] {
+  const entries: TextPropertyEntry[] = [];
+
+  // Title
+  entries.push({
+    text: "━━━ Fresh Configuration Editor ━━━\n",
+    properties: { type: "title" },
+  });
+  entries.push({
+    text: `File: ${state.configPath}${state.hasChanges ? " [modified]" : ""}\n`,
+    properties: { type: "file-path" },
+  });
+  entries.push({
+    text: "\n",
+    properties: { type: "blank" },
+  });
+
+  // Fields
+  state.visibleFields = buildVisibleFields();
+
+  for (let i = 0; i < state.visibleFields.length; i++) {
+    const field = state.visibleFields[i];
+    const indent = "  ".repeat(field.depth);
+
+    if (field.isSection) {
+      // Section header with expand/collapse indicator
+      const icon = field.expanded ? "▼" : "▶";
+      entries.push({
+        text: `${indent}${icon} ${field.name}\n`,
+        properties: {
+          type: "section",
+          path: field.path,
+          index: i,
+          expanded: field.expanded,
+        },
+      });
+    } else {
+      // Regular field
+      const valueStr = formatValue(field.value, field.schema);
+      const defaultMarker = field.isDefault ? " (default)" : "";
+
+      entries.push({
+        text: `${indent}  ${field.name}: ${valueStr}${defaultMarker}\n`,
+        properties: {
+          type: "field",
+          path: field.path,
+          index: i,
+          fieldType: field.schema.type,
+          isDefault: field.isDefault,
+        },
+      });
+    }
+  }
+
+  // Footer with help
+  entries.push({
+    text: "\n",
+    properties: { type: "blank" },
+  });
+  entries.push({
+    text: "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+    properties: { type: "separator" },
+  });
+  entries.push({
+    text: "↑/↓: navigate | RET/SPC: edit | TAB: expand/collapse | d: reset to default\n",
+    properties: { type: "footer" },
+  });
+  entries.push({
+    text: "s: save | r: reload | q: quit | ?: help\n",
+    properties: { type: "footer" },
+  });
+
+  return entries;
+}
+
+/**
+ * Apply syntax highlighting to the config editor buffer
+ */
+function applyHighlighting(): void {
+  if (state.bufferId === null) return;
+
+  const bufferId = state.bufferId;
+  editor.clearNamespace(bufferId, "config");
+
+  const content = state.cachedContent;
+  if (!content) return;
+
+  const lines = content.split("\n");
+  let byteOffset = 0;
+
+  // Get cursor line for selection highlighting
+  const cursorLine = editor.getCursorLine();
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    const lineStart = byteOffset;
+    const lineEnd = lineStart + line.length;
+
+    // Highlight cursor line
+    if (lineIdx + 1 === cursorLine && lineIdx >= 3) { // Skip header lines
+      editor.addOverlay(
+        bufferId, "config", lineStart, lineEnd,
+        colors.selected[0], colors.selected[1], colors.selected[2],
+        true, false, false  // underline
+      );
+    }
+
+    // Title line
+    if (line.includes("Fresh Configuration Editor")) {
+      editor.addOverlay(
+        bufferId, "config", lineStart, lineEnd,
+        colors.sectionHeader[0], colors.sectionHeader[1], colors.sectionHeader[2],
+        false, true, false  // bold
+      );
+    }
+
+    // Section headers (▼ or ▶)
+    if (line.match(/^\s*[▼▶]/)) {
+      editor.addOverlay(
+        bufferId, "config", lineStart, lineEnd,
+        colors.sectionHeader[0], colors.sectionHeader[1], colors.sectionHeader[2],
+        false, true, false  // bold
+      );
+    }
+
+    // Field values - color based on type
+    const fieldMatch = line.match(/^(\s+)(\w+): (.+?)(\s*\(default\))?$/);
+    if (fieldMatch) {
+      const [, indent, name, value, defaultMarker] = fieldMatch;
+      const nameStart = lineStart + indent.length;
+      const nameEnd = nameStart + name.length;
+
+      // Field name
+      editor.addOverlay(
+        bufferId, "config", nameStart, nameEnd,
+        colors.fieldName[0], colors.fieldName[1], colors.fieldName[2],
+        false, false, false
+      );
+
+      // Value coloring based on content
+      const valueStart = nameEnd + 2; // ": "
+      const valueEnd = defaultMarker ? lineEnd - defaultMarker.length : lineEnd;
+
+      if (value.startsWith("[x]")) {
+        editor.addOverlay(
+          bufferId, "config", valueStart, valueEnd,
+          colors.boolTrue[0], colors.boolTrue[1], colors.boolTrue[2],
+          false, false, false
+        );
+      } else if (value.startsWith("[ ]")) {
+        editor.addOverlay(
+          bufferId, "config", valueStart, valueEnd,
+          colors.boolFalse[0], colors.boolFalse[1], colors.boolFalse[2],
+          false, false, false
+        );
+      } else if (value.startsWith("[▼]")) {
+        editor.addOverlay(
+          bufferId, "config", valueStart, valueEnd,
+          colors.enumValue[0], colors.enumValue[1], colors.enumValue[2],
+          false, false, false
+        );
+      } else if (value.startsWith('"')) {
+        editor.addOverlay(
+          bufferId, "config", valueStart, valueEnd,
+          colors.stringValue[0], colors.stringValue[1], colors.stringValue[2],
+          false, false, false
+        );
+      } else if (value.match(/^-?\d/)) {
+        editor.addOverlay(
+          bufferId, "config", valueStart, valueEnd,
+          colors.numberValue[0], colors.numberValue[1], colors.numberValue[2],
+          false, false, false
+        );
+      }
+
+      // Default marker (dimmed)
+      if (defaultMarker) {
+        editor.addOverlay(
+          bufferId, "config", valueEnd, lineEnd,
+          colors.defaultValue[0], colors.defaultValue[1], colors.defaultValue[2],
+          false, false, true  // italic
+        );
+      }
+    }
+
+    // Footer
+    if (line.includes("navigate") || line.includes("save")) {
+      editor.addOverlay(
+        bufferId, "config", lineStart, lineEnd,
+        colors.footer[0], colors.footer[1], colors.footer[2],
+        false, false, true  // italic
+      );
+    }
+
+    // Modified indicator
+    if (line.includes("[modified]")) {
+      const modStart = lineStart + line.indexOf("[modified]");
+      const modEnd = modStart + "[modified]".length;
+      editor.addOverlay(
+        bufferId, "config", modStart, modEnd,
+        colors.modified[0], colors.modified[1], colors.modified[2],
+        false, true, false  // bold
+      );
+    }
+
+    byteOffset += line.length + 1;
+  }
+}
+
+/**
+ * Update the display
+ */
+function updateDisplay(): void {
+  if (state.bufferId === null) return;
+
+  const entries = buildDisplayEntries();
+  state.cachedContent = entries.map(e => e.text).join("");
+  editor.setVirtualBufferContent(state.bufferId, entries);
+  applyHighlighting();
+}
+
+// =============================================================================
+// Field Editing
+// =============================================================================
+
+/**
+ * Get the field at the current cursor position
+ */
+function getFieldAtCursor(): ConfigField | null {
+  if (state.bufferId === null) return null;
+
+  const props = editor.getTextPropertiesAtCursor(state.bufferId);
+  if (props.length > 0 && typeof props[0].index === "number") {
+    const index = props[0].index as number;
+    if (index >= 0 && index < state.visibleFields.length) {
+      return state.visibleFields[index];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Edit a boolean field (toggle)
+ */
+function editBooleanField(field: ConfigField): void {
+  const currentValue = field.value as boolean;
+  const newValue = !currentValue;
+
+  setNestedValue(state.workingConfig, field.path, newValue);
+  state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+  updateDisplay();
+
+  editor.setStatus(`${field.name}: ${newValue}`);
+}
+
+/**
+ * Edit an enum field (show selection prompt)
+ */
+function editEnumField(field: ConfigField): void {
+  const options = field.schema.enumOptions || [];
+  const currentValue = field.value as string;
+
+  // Start a prompt for enum selection
+  editor.startPrompt(`${field.name}: `, `config-enum-${field.path}`);
+
+  // Build suggestions
+  const suggestions: PromptSuggestion[] = options.map(opt => ({
+    text: opt,
+    value: opt,
+    description: opt === currentValue ? "(current)" : undefined,
+  }));
+
+  editor.setPromptSuggestions(suggestions);
+}
+
+/**
+ * Edit a number field (show input prompt)
+ */
+function editNumberField(field: ConfigField): void {
+  const currentValue = field.value as number;
+  const min = field.schema.min;
+  const max = field.schema.max;
+
+  let label = `${field.name}`;
+  if (min !== undefined || max !== undefined) {
+    label += ` (${min ?? ""}..${max ?? ""})`;
+  }
+  label += ": ";
+
+  editor.startPrompt(label, `config-number-${field.path}`);
+
+  // Show current value as initial suggestion
+  editor.setPromptSuggestions([{
+    text: String(currentValue),
+    description: "(current value)",
+    value: String(currentValue),
+  }]);
+}
+
+/**
+ * Edit a string field (show input prompt)
+ */
+function editStringField(field: ConfigField): void {
+  const currentValue = (field.value as string) || "";
+
+  editor.startPrompt(`${field.name}: `, `config-string-${field.path}`);
+
+  // Show current value as suggestion
+  if (currentValue) {
+    editor.setPromptSuggestions([{
+      text: currentValue,
+      description: "(current value)",
+      value: currentValue,
+    }]);
+  }
+}
+
+/**
+ * Edit an array field (special handling)
+ */
+function editArrayField(field: ConfigField): void {
+  const currentArray = (field.value as unknown[]) || [];
+
+  // For now, show a prompt to add a new item
+  editor.startPrompt(`Add to ${field.name}: `, `config-array-add-${field.path}`);
+
+  // Show current items as context
+  const suggestions: PromptSuggestion[] = currentArray.map((item, i) => ({
+    text: `[${i}] ${JSON.stringify(item)}`,
+    description: "existing item",
+    disabled: true,
+  }));
+  suggestions.push({
+    text: "(type to add new item)",
+    description: "",
+    disabled: true,
+  });
+
+  editor.setPromptSuggestions(suggestions);
+}
+
+// =============================================================================
+// Prompt Handlers
+// =============================================================================
+
+/**
+ * Handle enum selection prompt confirmation
+ */
+globalThis.onConfigEnumPromptConfirmed = function(args: {
+  prompt_type: string;
+  selected_index: number | null;
+  input: string;
+}): boolean {
+  if (!args.prompt_type.startsWith("config-enum-")) return true;
+
+  const path = args.prompt_type.replace("config-enum-", "");
+  const field = state.visibleFields.find(f => f.path === path);
+
+  if (field && args.input) {
+    // Validate against options
+    const options = field.schema.enumOptions || [];
+    if (options.includes(args.input)) {
+      setNestedValue(state.workingConfig, path, args.input);
+      state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+      updateDisplay();
+      editor.setStatus(`${field.name}: ${args.input}`);
+    } else {
+      editor.setStatus(`Invalid option: ${args.input}`);
+    }
+  }
+
+  return true;
+};
+
+/**
+ * Handle number input prompt confirmation
+ */
+globalThis.onConfigNumberPromptConfirmed = function(args: {
+  prompt_type: string;
+  selected_index: number | null;
+  input: string;
+}): boolean {
+  if (!args.prompt_type.startsWith("config-number-")) return true;
+
+  const path = args.prompt_type.replace("config-number-", "");
+  const field = state.visibleFields.find(f => f.path === path);
+
+  if (field && args.input) {
+    const num = parseFloat(args.input);
+    if (isNaN(num)) {
+      editor.setStatus("Invalid number");
+      return true;
+    }
+
+    // Validate range
+    if (field.schema.min !== undefined && num < field.schema.min) {
+      editor.setStatus(`Value must be >= ${field.schema.min}`);
+      return true;
+    }
+    if (field.schema.max !== undefined && num > field.schema.max) {
+      editor.setStatus(`Value must be <= ${field.schema.max}`);
+      return true;
+    }
+
+    setNestedValue(state.workingConfig, path, num);
+    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateDisplay();
+    editor.setStatus(`${field.name}: ${num}`);
+  }
+
+  return true;
+};
+
+/**
+ * Handle string input prompt confirmation
+ */
+globalThis.onConfigStringPromptConfirmed = function(args: {
+  prompt_type: string;
+  selected_index: number | null;
+  input: string;
+}): boolean {
+  if (!args.prompt_type.startsWith("config-string-")) return true;
+
+  const path = args.prompt_type.replace("config-string-", "");
+  const field = state.visibleFields.find(f => f.path === path);
+
+  if (field) {
+    setNestedValue(state.workingConfig, path, args.input);
+    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateDisplay();
+    editor.setStatus(`${field.name}: "${args.input}"`);
+  }
+
+  return true;
+};
+
+/**
+ * Handle array add prompt confirmation
+ */
+globalThis.onConfigArrayAddPromptConfirmed = function(args: {
+  prompt_type: string;
+  selected_index: number | null;
+  input: string;
+}): boolean {
+  if (!args.prompt_type.startsWith("config-array-add-")) return true;
+
+  const path = args.prompt_type.replace("config-array-add-", "");
+  const field = state.visibleFields.find(f => f.path === path);
+
+  if (field && args.input) {
+    const currentArray = (getNestedValue(state.workingConfig, path) as unknown[]) || [];
+    const newArray = [...currentArray, args.input];
+    setNestedValue(state.workingConfig, path, newArray);
+    state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+    updateDisplay();
+    editor.setStatus(`Added "${args.input}" to ${field.name}`);
+  }
+
+  return true;
+};
+
+/**
+ * Handle prompt cancellation
+ */
+globalThis.onConfigPromptCancelled = function(args: { prompt_type: string }): boolean {
+  if (!args.prompt_type.startsWith("config-")) return true;
+  editor.setStatus("Cancelled");
+  return true;
+};
+
+// Register prompt handlers
+editor.on("prompt_confirmed", "onConfigEnumPromptConfirmed");
+editor.on("prompt_confirmed", "onConfigNumberPromptConfirmed");
+editor.on("prompt_confirmed", "onConfigStringPromptConfirmed");
+editor.on("prompt_confirmed", "onConfigArrayAddPromptConfirmed");
+editor.on("prompt_cancelled", "onConfigPromptCancelled");
+
+// =============================================================================
+// Cursor Movement Handler
+// =============================================================================
+
+globalThis.onConfigEditorCursorMoved = function(data: {
+  buffer_id: number;
+  cursor_id: number;
+  old_position: number;
+  new_position: number;
+}): void {
+  if (state.bufferId === null || data.buffer_id !== state.bufferId) return;
+
+  // Re-apply highlighting to update selection
+  applyHighlighting();
+
+  // Show field description in status
+  const field = getFieldAtCursor();
+  if (field) {
+    editor.setStatus(field.schema.description);
+  }
+};
+
+editor.on("cursor_moved", "onConfigEditorCursorMoved");
+
+// =============================================================================
+// Public Commands
+// =============================================================================
+
+/**
+ * Open the config editor
+ */
+globalThis.open_config_editor = async function(): Promise<void> {
+  if (state.isOpen) {
+    editor.setStatus("Config editor already open");
+    return;
+  }
+
+  editor.setStatus("Loading configuration...");
+
+  // Save context
+  state.sourceSplitId = editor.getActiveSplitId();
+  state.sourceBufferId = editor.getActiveBufferId();
+
+  // Load config
+  state.originalConfig = await loadConfig();
+  state.workingConfig = deepClone(state.originalConfig);
+  state.hasChanges = false;
+
+  // Build initial entries
+  const entries = buildDisplayEntries();
+  state.cachedContent = entries.map(e => e.text).join("");
+
+  // Create virtual buffer
+  const result = await editor.createVirtualBufferInSplit({
+    name: "*Config Editor*",
+    mode: "config-editor",
+    read_only: true,
+    entries: entries,
+    ratio: 0.6,
+    direction: "vertical",
+    panel_id: "config-editor",
+    show_line_numbers: false,
+    show_cursors: true,
+    editing_disabled: true,
+  });
+
+  if (result.buffer_id !== null) {
+    state.isOpen = true;
+    state.bufferId = result.buffer_id;
+    state.splitId = result.split_id ?? null;
+
+    applyHighlighting();
+    editor.setStatus("Config Editor | ↑/↓: navigate | RET: edit | s: save | q: quit");
+  } else {
+    editor.setStatus("Failed to open config editor");
+  }
+};
+
+/**
+ * Close the config editor
+ */
+globalThis.config_editor_close = function(): void {
+  if (!state.isOpen) return;
+
+  // Check for unsaved changes
+  if (state.hasChanges) {
+    // For now, just warn - could add a confirmation prompt
+    editor.setStatus("Warning: Unsaved changes discarded");
+  }
+
+  // Close split
+  if (state.splitId !== null) {
+    editor.closeSplit(state.splitId);
+  }
+
+  // Focus source
+  if (state.sourceSplitId !== null) {
+    editor.focusSplit(state.sourceSplitId);
+  }
+
+  // Reset state
+  state.isOpen = false;
+  state.bufferId = null;
+  state.splitId = null;
+  state.originalConfig = {};
+  state.workingConfig = {};
+  state.hasChanges = false;
+
+  editor.setStatus("Config editor closed");
+};
+
+/**
+ * Edit the field at cursor
+ */
+globalThis.config_editor_edit_field = function(): void {
+  const field = getFieldAtCursor();
+  if (!field) {
+    editor.setStatus("No field selected");
+    return;
+  }
+
+  if (field.isSection) {
+    // Toggle section expansion
+    config_editor_toggle_section();
+    return;
+  }
+
+  // Edit based on type
+  switch (field.schema.type) {
+    case "boolean":
+      editBooleanField(field);
+      break;
+    case "enum":
+      editEnumField(field);
+      break;
+    case "number":
+      editNumberField(field);
+      break;
+    case "string":
+      editStringField(field);
+      break;
+    case "array":
+      editArrayField(field);
+      break;
+    case "object":
+      // Toggle expansion for nested objects
+      config_editor_toggle_section();
+      break;
+    default:
+      editor.setStatus(`Cannot edit ${field.schema.type} fields yet`);
+  }
+};
+
+/**
+ * Toggle boolean or edit other field types (Space key)
+ */
+globalThis.config_editor_toggle_or_edit = function(): void {
+  const field = getFieldAtCursor();
+  if (!field) {
+    editor.setStatus("No field selected");
+    return;
+  }
+
+  if (field.isSection) {
+    config_editor_toggle_section();
+    return;
+  }
+
+  if (field.schema.type === "boolean") {
+    editBooleanField(field);
+  } else {
+    config_editor_edit_field();
+  }
+};
+
+/**
+ * Toggle section expansion
+ */
+globalThis.config_editor_toggle_section = function(): void {
+  const field = getFieldAtCursor();
+  if (!field || !field.isSection) {
+    editor.setStatus("Not a section");
+    return;
+  }
+
+  if (state.expandedSections.has(field.path)) {
+    state.expandedSections.delete(field.path);
+  } else {
+    state.expandedSections.add(field.path);
+  }
+
+  updateDisplay();
+};
+
+/**
+ * Reset field to default value
+ */
+globalThis.config_editor_reset_to_default = function(): void {
+  const field = getFieldAtCursor();
+  if (!field || field.isSection) {
+    editor.setStatus("Select a field to reset");
+    return;
+  }
+
+  if (field.isDefault) {
+    editor.setStatus("Already using default value");
+    return;
+  }
+
+  // Remove the custom value (will fall back to default)
+  deleteNestedValue(state.workingConfig, field.path);
+  state.hasChanges = !deepEqual(state.workingConfig, state.originalConfig);
+  updateDisplay();
+
+  editor.setStatus(`${field.name} reset to default`);
+};
+
+/**
+ * Save configuration
+ */
+globalThis.config_editor_save = async function(): Promise<void> {
+  if (!state.hasChanges) {
+    editor.setStatus("No changes to save");
+    return;
+  }
+
+  editor.setStatus("Saving...");
+
+  if (await saveConfig()) {
+    updateDisplay();
+    editor.setStatus(`Configuration saved to ${state.configPath}`);
+  }
+};
+
+/**
+ * Reload configuration from file
+ */
+globalThis.config_editor_reload = async function(): Promise<void> {
+  if (state.hasChanges) {
+    editor.setStatus("Discarding local changes...");
+  }
+
+  state.originalConfig = await loadConfig();
+  state.workingConfig = deepClone(state.originalConfig);
+  state.hasChanges = false;
+  updateDisplay();
+
+  editor.setStatus("Configuration reloaded from file");
+};
+
+/**
+ * Show help
+ */
+globalThis.config_editor_show_help = function(): void {
+  editor.setStatus(
+    "Keys: ↑/↓ navigate | RET/SPC edit | TAB expand | d default | s save | r reload | q quit"
+  );
+};
+
+// =============================================================================
+// Command Registration
+// =============================================================================
+
+editor.registerCommand(
+  "Edit Configuration",
+  "Open the configuration editor",
+  "open_config_editor",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_close",
+  "Close the config editor",
+  "config_editor_close",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_edit_field",
+  "Edit the selected field",
+  "config_editor_edit_field",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_toggle_or_edit",
+  "Toggle boolean or edit field",
+  "config_editor_toggle_or_edit",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_toggle_section",
+  "Expand or collapse section",
+  "config_editor_toggle_section",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_reset_to_default",
+  "Reset field to default value",
+  "config_editor_reset_to_default",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_save",
+  "Save configuration",
+  "config_editor_save",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_reload",
+  "Reload configuration from file",
+  "config_editor_reload",
+  "normal"
+);
+
+editor.registerCommand(
+  "config_editor_show_help",
+  "Show config editor help",
+  "config_editor_show_help",
+  "normal"
+);
+
+// =============================================================================
+// Plugin Initialization
+// =============================================================================
+
+editor.setStatus("Config Editor plugin loaded");
+editor.debug("Config Editor plugin initialized - Use 'Edit Configuration' command to open");
