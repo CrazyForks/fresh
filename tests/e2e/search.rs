@@ -360,8 +360,9 @@ fn test_search_highlighting_visible_only() {
 /// Test interactive replace wrap-around behavior
 #[test]
 fn test_interactive_replace_wrap_around() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("test.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("test.txt");
 
     // Create a file with "foo" at positions: 0, 20, 40
     // We'll start at position 25 (middle), so we should see:
@@ -372,7 +373,6 @@ fn test_interactive_replace_wrap_around() {
     // 5. Stop (no more matches before start_pos=25)
     std::fs::write(&file_path, "foo is here\nand\nfoo is there\nfoo again").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.render().unwrap();
 
@@ -477,13 +477,13 @@ fn test_interactive_replace_wrap_around() {
 /// Test interactive replace stops at starting position after wrap
 #[test]
 fn test_interactive_replace_wrap_stops_at_start() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("test.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("test.txt");
 
     // Create file with pattern at positions before and after cursor
     std::fs::write(&file_path, "foo\nbar\nbaz\nfoo\nqux\nfoo").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.render().unwrap();
 

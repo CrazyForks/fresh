@@ -224,14 +224,13 @@ fn test_nested_splits() {
 /// Test split view with file operations
 #[test]
 fn test_split_with_file_operations() {
-    let temp_dir = TempDir::new().unwrap();
-    let file1 = temp_dir.path().join("file1.txt");
-    let file2 = temp_dir.path().join("file2.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file1 = project_dir.join("file1.txt");
+    let file2 = project_dir.join("file2.txt");
 
     std::fs::write(&file1, "File 1 content").unwrap();
     std::fs::write(&file2, "File 2 content").unwrap();
-
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
 
     // Open first file
     harness.open_file(&file1).unwrap();

@@ -94,10 +94,10 @@ fn test_live_grep_basic_search() {
 #[test]
 #[ignore = "flaky test - times out intermittently"]
 fn test_live_grep_select_result() {
-    // Create a temporary project directory
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let project_root = temp_dir.path().join("project_root");
-    fs::create_dir(&project_root).unwrap();
+    // Create harness with temp project directory
+    let mut harness =
+        EditorTestHarness::with_temp_project_and_config(100, 30, Default::default()).unwrap();
+    let project_root = harness.project_dir().unwrap();
 
     // Create plugins directory and copy the live_grep plugin
     let plugins_dir = project_root.join("plugins");
@@ -113,15 +113,11 @@ fn test_live_grep_select_result() {
     let target_content = "// TARGET_FILE\nfn target_function() {\n    let result = 123;\n}\n";
     fs::write(project_root.join("target.rs"), target_content).unwrap();
 
-    // Create initial file
-    let fixture = TestFixture::new("start.txt", "Starting point\n").unwrap();
+    // Create initial file in project dir
+    let start_file = project_root.join("start.txt");
+    fs::write(&start_file, "Starting point\n").unwrap();
 
-    // Create harness
-    let mut harness =
-        EditorTestHarness::with_config_and_working_dir(100, 30, Default::default(), project_root)
-            .unwrap();
-
-    harness.open_file(&fixture.path).unwrap();
+    harness.open_file(&start_file).unwrap();
     harness.render().unwrap();
 
     // Start Live Grep via command palette
@@ -170,10 +166,10 @@ fn test_live_grep_select_result() {
 #[test]
 #[ignore = "flaky test - times out intermittently"]
 fn test_live_grep_preview_split() {
-    // Create a temporary project directory
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let project_root = temp_dir.path().join("project_root");
-    fs::create_dir(&project_root).unwrap();
+    // Create harness with temp project directory
+    let mut harness =
+        EditorTestHarness::with_temp_project_and_config(120, 30, Default::default()).unwrap();
+    let project_root = harness.project_dir().unwrap();
 
     // Create plugins directory and copy the live_grep plugin
     let plugins_dir = project_root.join("plugins");
@@ -189,15 +185,11 @@ fn test_live_grep_preview_split() {
     let search_content = "PREVIEW_TEST_CONTENT\nLine 2\nLine 3\nLine 4\nLine 5\n";
     fs::write(project_root.join("preview_test.txt"), search_content).unwrap();
 
-    // Create initial file
-    let fixture = TestFixture::new("main.txt", "Main file\n").unwrap();
+    // Create initial file in project dir
+    let main_file = project_root.join("main.txt");
+    fs::write(&main_file, "Main file\n").unwrap();
 
-    // Create harness
-    let mut harness =
-        EditorTestHarness::with_config_and_working_dir(120, 30, Default::default(), project_root)
-            .unwrap();
-
-    harness.open_file(&fixture.path).unwrap();
+    harness.open_file(&main_file).unwrap();
     harness.render().unwrap();
 
     // Start Live Grep via command palette

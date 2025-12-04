@@ -2,7 +2,6 @@ use crate::common::harness::EditorTestHarness;
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use tempfile::TempDir;
 
 /// Test that the notify-based auto-revert flow works correctly.
 /// This test validates that external file changes are detected and
@@ -12,13 +11,12 @@ use tempfile::TempDir;
 /// watcher continues working after repeated file changes.
 #[test]
 fn test_auto_revert_multiple_external_edits() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("test_revert.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("test_revert.txt");
 
     // Create initial file content
     fs::write(&file_path, "Initial content v1").unwrap();
-
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
 
     // Open the file - auto_revert is enabled by default
     harness.open_file(&file_path).unwrap();
@@ -54,13 +52,13 @@ fn test_auto_revert_multiple_external_edits() {
 /// Test that auto-revert works correctly when the file grows significantly
 #[test]
 fn test_auto_revert_file_grows() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("growing_file.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("growing_file.txt");
 
     // Start with a small file
     fs::write(&file_path, "Line 1").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.assert_buffer_content("Line 1");
 
@@ -87,8 +85,9 @@ fn test_auto_revert_file_grows() {
 /// Test that auto-revert works correctly when the file shrinks
 #[test]
 fn test_auto_revert_file_shrinks() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("shrinking_file.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("shrinking_file.txt");
 
     // Start with a large file
     let initial_content = (1..=10)
@@ -97,7 +96,6 @@ fn test_auto_revert_file_shrinks() {
         .join("\n");
     fs::write(&file_path, &initial_content).unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.assert_buffer_content(&initial_content);
 
@@ -124,8 +122,9 @@ fn test_auto_revert_file_shrinks() {
 /// Test that auto-revert preserves the viewport position when possible
 #[test]
 fn test_auto_revert_preserves_scroll_position() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("scrolled_file.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("scrolled_file.txt");
 
     // Create a file with many lines
     let content: String = (1..=100)
@@ -134,7 +133,6 @@ fn test_auto_revert_preserves_scroll_position() {
         .join("\n");
     fs::write(&file_path, &content).unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
 
     // Scroll down to somewhere in the middle
@@ -176,12 +174,12 @@ fn test_auto_revert_preserves_scroll_position() {
 /// Test that auto-revert does NOT occur when buffer has local modifications
 #[test]
 fn test_auto_revert_skipped_when_buffer_modified() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("modified_buffer.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("modified_buffer.txt");
 
     fs::write(&file_path, "Original content").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.assert_buffer_content("Original content");
 
@@ -219,12 +217,12 @@ fn test_auto_revert_skipped_when_buffer_modified() {
 /// Test rapid consecutive file changes are handled correctly
 #[test]
 fn test_auto_revert_rapid_changes() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("rapid_changes.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("rapid_changes.txt");
 
     fs::write(&file_path, "v0").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
 
     // Make rapid consecutive changes
@@ -244,14 +242,14 @@ fn test_auto_revert_rapid_changes() {
 /// Test that auto-revert preserves cursor position when file content changes
 #[test]
 fn test_auto_revert_preserves_cursor_position() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("cursor_preserve.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("cursor_preserve.txt");
 
     // Create a file with some lines
     let content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
     fs::write(&file_path, content).unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
 
     // Move cursor to a specific position (end of line 3, which is "Line 3")
@@ -289,12 +287,12 @@ fn test_auto_revert_preserves_cursor_position() {
 /// because the file change event would come too quickly after the previous event
 #[test]
 fn test_auto_revert_not_disabled_by_external_save() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("save_test.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("save_test.txt");
 
     fs::write(&file_path, "Initial content").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.assert_buffer_content("Initial content");
 
@@ -327,13 +325,13 @@ fn test_auto_revert_not_disabled_by_external_save() {
 /// the inode changes and the watch can become stale.
 #[test]
 fn test_auto_revert_with_temp_rename_save() {
-    let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("temp_rename_test.txt");
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
+    let file_path = project_dir.join("temp_rename_test.txt");
 
     // Create initial file
     fs::write(&file_path, "Initial content v1").unwrap();
 
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
     harness.open_file(&file_path).unwrap();
     harness.assert_buffer_content("Initial content v1");
 
@@ -346,9 +344,7 @@ fn test_auto_revert_with_temp_rename_save() {
 
         // Write to a temp file first, then rename (atomic save pattern)
         // This changes the file's inode, which can break inotify watches
-        let temp_path = temp_dir
-            .path()
-            .join(format!(".temp_rename_test.txt.{}", version));
+        let temp_path = project_dir.join(format!(".temp_rename_test.txt.{}", version));
         fs::write(&temp_path, &new_content).unwrap();
         fs::rename(&temp_path, &file_path).unwrap();
 

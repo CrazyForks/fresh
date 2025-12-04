@@ -652,8 +652,7 @@ fn test_todo_highlighter_updates_on_delete() {
 fn test_diagnostics_panel_plugin_loads() {
     // Create a temporary project directory
     let temp_dir = tempfile::TempDir::new().unwrap();
-    let project_root = temp_dir.path().join("project_root");
-    fs::create_dir(&project_root).unwrap();
+    let project_root = temp_dir.path().to_path_buf();
 
     // Create plugins directory and copy the diagnostics panel plugin
     let plugins_dir = project_root.join("plugins");
@@ -665,9 +664,10 @@ fn test_diagnostics_panel_plugin_loads() {
     let plugin_dest = plugins_dir.join("diagnostics_panel.ts");
     fs::copy(&plugin_source, &plugin_dest).unwrap();
 
-    // Create a simple test file
+    // Create a simple test file in the project directory (not via TestFixture!)
     let test_file_content = "fn main() {\n    println!(\"test\");\n}\n";
-    let fixture = TestFixture::new("test_diagnostics.rs", test_file_content).unwrap();
+    let test_file = project_root.join("test_diagnostics.rs");
+    fs::write(&test_file, test_file_content).unwrap();
 
     // Create harness with the project directory (so plugins load)
     let mut harness =
@@ -675,7 +675,7 @@ fn test_diagnostics_panel_plugin_loads() {
             .unwrap();
 
     // Open the test file - this should trigger plugin loading
-    harness.open_file(&fixture.path).unwrap();
+    harness.open_file(&test_file).unwrap();
     harness.render().unwrap();
 
     // Check that file content is visible

@@ -836,10 +836,10 @@ fn test_merge_multiple_conflicts_workflow() {
 /// This is a real-world example from the Lustre project with a complex conflict
 #[test]
 fn test_diff3_conflict_with_base_section() {
-    // Create a temporary project directory
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let project_root = temp_dir.path().join("project_root");
-    fs::create_dir(&project_root).unwrap();
+    // Create harness with temp project directory
+    let mut harness =
+        EditorTestHarness::with_temp_project_and_config(120, 40, Default::default()).unwrap();
+    let project_root = harness.project_dir().unwrap();
 
     // Create plugins directory and copy the merge conflict plugin
     let plugins_dir = project_root.join("plugins");
@@ -851,16 +851,12 @@ fn test_diff3_conflict_with_base_section() {
     let plugin_dest = plugins_dir.join("merge_conflict.ts");
     fs::copy(&plugin_source, &plugin_dest).unwrap();
 
-    // Create test file with diff3-style conflict (includes base section)
-    let fixture = TestFixture::new("showdf.c", DIFF3_CONFLICT_WITH_BASE).unwrap();
-
-    // Create harness with the project directory
-    let mut harness =
-        EditorTestHarness::with_config_and_working_dir(120, 40, Default::default(), project_root)
-            .unwrap();
+    // Create test file with diff3-style conflict (includes base section) in project dir
+    let file_path = project_root.join("showdf.c");
+    fs::write(&file_path, DIFF3_CONFLICT_WITH_BASE).unwrap();
 
     // Open the test file
-    harness.open_file(&fixture.path).unwrap();
+    harness.open_file(&file_path).unwrap();
     harness.render().unwrap();
 
     // Verify all conflict markers are visible in the file
@@ -978,10 +974,10 @@ fn test_diff3_conflict_resolution() {
 /// Test that CRLF line endings are handled correctly (Windows-style files)
 #[test]
 fn test_merge_conflict_crlf_line_endings() {
-    // Create a temporary project directory
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let project_root = temp_dir.path().join("project_root");
-    fs::create_dir(&project_root).unwrap();
+    // Create harness with temp project directory
+    let mut harness =
+        EditorTestHarness::with_temp_project_and_config(120, 40, Default::default()).unwrap();
+    let project_root = harness.project_dir().unwrap();
 
     // Create plugins directory and copy the merge conflict plugin
     let plugins_dir = project_root.join("plugins");
@@ -993,18 +989,14 @@ fn test_merge_conflict_crlf_line_endings() {
     let plugin_dest = plugins_dir.join("merge_conflict.ts");
     fs::copy(&plugin_source, &plugin_dest).unwrap();
 
-    // Create test file with CRLF line endings (Windows-style)
+    // Create test file with CRLF line endings (Windows-style) in project dir
     // This is the diff3 conflict but with \r\n instead of \n
     let crlf_content = "}\r\n\r\nstatic int showdf(char *mntdir, struct obd_statfs *stat,\r\n<<<<<<< HEAD\r\n                  char *uuid, enum mntdf_flags flags,\r\n                  char *type, int index, int rc)\r\n||||||| parent of a3f05d81f6\r\n                  const char *uuid, enum mntdf_flags flags,\r\n                  char *type, int index, int rc)\r\n=======\r\n                  const char *uuid, enum mntdf_flags flags,\r\n                  char *type, int index, int rc, enum showdf_fields fields)\r\n>>>>>>> a3f05d81f6\r\n{\r\n";
-    let fixture = TestFixture::new("crlf_conflict.c", crlf_content).unwrap();
-
-    // Create harness
-    let mut harness =
-        EditorTestHarness::with_config_and_working_dir(120, 40, Default::default(), project_root)
-            .unwrap();
+    let file_path = project_root.join("crlf_conflict.c");
+    fs::write(&file_path, crlf_content).unwrap();
 
     // Open the test file
-    harness.open_file(&fixture.path).unwrap();
+    harness.open_file(&file_path).unwrap();
     harness.render().unwrap();
 
     // Verify conflict markers are visible

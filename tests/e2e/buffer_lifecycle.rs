@@ -176,11 +176,13 @@ fn test_undo_restores_non_dirty_status() {
 /// Test that save then undo correctly tracks modified status
 #[test]
 fn test_undo_after_save_modified_status() {
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_dir = harness.project_dir().unwrap();
 
     // Create a file and open it
-    let fixture = TestFixture::new("test.txt", "initial").unwrap();
-    harness.open_file(&fixture.path).unwrap();
+    let file_path = project_dir.join("test.txt");
+    std::fs::write(&file_path, "initial").unwrap();
+    harness.open_file(&file_path).unwrap();
 
     // Buffer should not be modified after opening
     harness.render().unwrap();

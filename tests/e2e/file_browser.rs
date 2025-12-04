@@ -828,8 +828,8 @@ fn test_file_browser_click_updates_prompt() {
 /// Test that opening file browser with a buffer in a subdir shows correct prompt path
 #[test]
 fn test_file_browser_prompt_shows_buffer_directory() {
-    let temp_dir = TempDir::new().unwrap();
-    let project_root = temp_dir.path().to_path_buf();
+    let mut harness = EditorTestHarness::with_temp_project(80, 24).unwrap();
+    let project_root = harness.project_dir().unwrap();
 
     // Create a nested directory structure with a file
     let subdir = project_root.join("src").join("components");
@@ -840,15 +840,7 @@ fn test_file_browser_prompt_shows_buffer_directory() {
     // Also create a sibling file in the same directory
     fs::write(subdir.join("input.rs"), "// Input component").unwrap();
 
-    let mut harness = EditorTestHarness::with_config_and_working_dir(
-        80,
-        24,
-        Default::default(),
-        project_root.clone(),
-    )
-    .unwrap();
-
-    // Open the file in the subdirectory
+    // Open the file in the subdirectory using relative path
     harness
         .send_key(KeyCode::Char('o'), KeyModifiers::CONTROL)
         .unwrap();
@@ -856,9 +848,8 @@ fn test_file_browser_prompt_shows_buffer_directory() {
         .wait_until(|h| h.screen_to_string().contains("Navigation:"))
         .expect("File browser should appear");
 
-    // Type the full path to open the file
-    let path_str = file_path.to_str().unwrap();
-    harness.type_text(path_str).unwrap();
+    // Type the relative path to open the file
+    harness.type_text("src/components/button.rs").unwrap();
     harness
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
@@ -877,10 +868,9 @@ fn test_file_browser_prompt_shows_buffer_directory() {
         .wait_until(|h| h.screen_to_string().contains("Navigation:"))
         .expect("File browser should appear again");
 
-    // The prompt should show the directory path of the open file
-    // Format: "Open: /path/to/src/components/"
-    let expected_dir = format!("{}/", subdir.to_string_lossy());
-    let expected_prompt = format!("Open: {}", expected_dir);
+    // The prompt should show the relative directory path of the open file
+    // Format: "Open: src/components/"
+    let expected_prompt = "Open: src/components/";
 
     // Get prompt line using harness helper (knows screen layout)
     let prompt_line = harness.get_prompt_line();

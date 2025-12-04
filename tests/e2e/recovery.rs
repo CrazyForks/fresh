@@ -806,8 +806,11 @@ fn test_recovery_after_save_with_size_change() {
     use std::fs;
     use tempfile::TempDir;
 
+    // Create temp directory that stays alive for the duration of the test
+    // (needed because recovery reconstruction requires the original file)
     let temp_dir = TempDir::new().unwrap();
-    let file_path = temp_dir.path().join("large_file.txt");
+    let project_root = temp_dir.path().to_path_buf();
+    let file_path = project_root.join("large_file.txt");
 
     // Create a large file (100KB to trigger large file mode)
     let initial_size = 100_000;
@@ -819,7 +822,9 @@ fn test_recovery_after_save_with_size_change() {
     config.editor.large_file_threshold_bytes = 1000; // Force large file mode
     config.editor.auto_save_interval_secs = 0;
 
-    let mut harness = EditorTestHarness::with_config(80, 24, config.clone()).unwrap();
+    let mut harness =
+        EditorTestHarness::with_config_and_working_dir(80, 24, config.clone(), project_root)
+            .unwrap();
 
     // Open the large file
     harness.open_file(&file_path).unwrap();
