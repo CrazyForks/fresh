@@ -77,7 +77,7 @@ jobs:
           find target/${{ matrix.target }}/generate-rpm -name "*.rpm" -exec cp {} packages/ \;
           ls -la packages/
       - name: Upload Linux packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: artifacts-linux-packages-${{ matrix.arch }}
           path: packages/*
