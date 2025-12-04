@@ -19,3 +19,5 @@ install-updater = false
 include = ["plugins/"]
 # A namespace to use when publishing this package to the npm registry
 npm-scope = "@fresh-editor"
+# Host jobs to run in CI
+host-jobs = ["./linux-packages"]
