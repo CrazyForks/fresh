@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !fromJson(inputs.plan).announcement_is_prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
