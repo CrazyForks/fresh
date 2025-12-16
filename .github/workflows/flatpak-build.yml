@@ -33,7 +33,7 @@ jobs:
       - name: Install Flatpak and flatpak-builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream-glib
+          sudo apt-get install -y flatpak flatpak-builder appstream-compose libappstream-glib8
 
       - name: Add Flathub repository
         run: |
