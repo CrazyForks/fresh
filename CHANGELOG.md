@@ -1,57 +1,25 @@
 # Release Notes
 
-## 0.1.57
-
-### Features
-
-* **Per-Language Tab Settings**: Added `use_tabs` and `show_whitespace_tabs` config options per language. Go and Makefile default to tabs; Go hides tab indicators by default (#364).
-
-* **AppImage Packaging**: AppImage bundles are now included in GitHub releases (#365).
-
-### Bug Fixes
-
-* **LSP Missing Error Messages**: Improved error messages when LSP server is not found (#363).
-
-* **LSP didOpen Ordering**: Ensure didOpen is sent before any LSP request, fixing "trying to get preamble for non-added document" errors (#399).
-
-* **LSP Diagnostics Capability Check**: Check diagnosticProvider capability before sending pull diagnostics requests (#399).
-
-* **Terminal Mode Reset**: Fixed terminal_mode not being reset when closing a terminal buffer.
-
-* **cargo-binstall**: Fixed cargo-binstall complaining about missing binaries by making dev binaries optional (#388).
-
----
-
 ## 0.1.56
 
 ### Features
 
-* **Terminal Color Detection**: Automatic detection of terminal color capabilities with fallback to 256 colors for GNU Screen and other limited terminals. Manual override available via `FRESH_COLOR_MODE` environment variable.
-
-* **TOML Syntax Highlighting**: Added embedded TextMate grammar for TOML files (syntect doesn't include one by default).
-
-* **Language Detection by Filename**: Languages can now be detected by filename in addition to extension. Useful for dotfiles like `.bashrc`, `.zshrc`, and special files like `Makefile` and `Dockerfile`. Fixes #383.
-
-* **Minimal Config Saves**: Config file now only saves fields that differ from defaults, keeping `config.json` clean and readable.
-
-### Settings UI Enhancements
-
-* Mouse click and double-click support for map entries
-* Mouse click support for entry dialog items and buttons
-* Hover effects for entry dialog items and buttons
-* Improved entry dialog scrolling and sizing
+* **Per-Language Tab Settings**: Added `use_tabs` and `show_whitespace_tabs` config options per language. Go and Makefile default to tabs (#364).
+* **AppImage Packaging**: AppImage bundles now included in GitHub releases (#365).
+* **Terminal Color Detection**: Auto-detection of terminal color capabilities with fallback to 256 colors. Override via `FRESH_COLOR_MODE`.
+* **TOML Syntax Highlighting**: Added embedded TextMate grammar for TOML files.
+* **Language Detection by Filename**: Detect languages by filename (`.bashrc`, `Makefile`, `Dockerfile`, etc.) (#383).
+* **Minimal Config Saves**: Config file only saves non-default fields.
+* **Settings UI**: Mouse click/double-click support, hover effects, improved scrolling.
 
 ### Bug Fixes
 
-* **macOS Keybinding Display**: Fixed keybinding display showing ⌘ instead of Ctrl on macOS.
-
-* **Entry Dialog Focus**: Fixed focus wrapping and cursor visibility when clicking entry dialog items.
-
-* **tmux Truecolor**: Fixed truecolor detection in tmux when `COLORTERM=truecolor` is set.
-
-### Documentation
-
-* Added Settings UI instructions for configuring language detection by extension and filename patterns.
+* **LSP**: Improved error messages when server not found (#363). Fixed didOpen ordering (#399). Check diagnosticProvider capability before pull diagnostics (#399).
+* **Terminal Mode Reset**: Fixed terminal_mode not being reset when closing a terminal buffer.
+* **cargo-binstall**: Fixed missing binaries warning (#388).
+* **macOS Keybinding Display**: Fixed showing ⌘ instead of Ctrl (#356).
+* **tmux Truecolor**: Fixed detection when `COLORTERM=truecolor` is set.
+* **RPM Upgrade**: Fixed upgrade failing when older version installed (#387).
 
 ## 0.1.54
 
