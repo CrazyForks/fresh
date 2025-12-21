@@ -4,21 +4,31 @@
 
 ### Bug Fixes
 
-* **External Paste with Prompts**: Fixed paste via terminal (Ctrl+Shift+V / bracketed paste) going to editor instead of open prompt. Paste now correctly goes to prompts like Open File and Command Palette (#406).
+* **External Paste with Prompts**: Fixed paste via terminal (Ctrl+Shift+V / bracketed paste) going to editor instead of open prompt (#406).
 
-* **Block Selection Escape**: Fixed Escape key not canceling block selection mode. ClearAnchor now properly resets block selection state (#405).
+* **Block Selection Escape**: Fixed Escape key not canceling block selection mode (#405).
 
-* **CRLF Line Endings**: Fixed CRLF handling to preserve original line endings instead of normalizing on load. Enter inserts correct line ending based on file type, End key positions before \r\n, and backspace/delete treat \r\n as a single unit. Standalone \r in LF files now displays as `<0D>` (#401).
+* **CRLF Line Endings**: Fixed CRLF handling to preserve original line endings. Enter inserts correct line ending, End key positions before \r\n, backspace/delete treat \r\n as single unit (#401).
 
-* **RPM Package**: Fixed /usr/bin/fresh entry missing from RPM package manifest by using wrapper script instead of post_install scriptlet.
+* **RPM Package**: Fixed /usr/bin/fresh entry missing from RPM package manifest.
+
+* **Settings Percentage Values**: Fixed percentage settings saving as integers instead of floats.
+
+* **Windows Unicode**: Fixed unicode character not supported on Windows (#400).
 
 ### Packaging
 
-* **AUR Source Package**: Fixed sha256sum not being updated when publishing, causing checksum mismatches.
+* **AUR Source Package**: Fixed sha256sum not being updated when publishing.
+
+* **Nix Flake**: Fixed missing sublime-syntax grammar files in source filter.
+
+* **Flatpak/AppImage**: Strip binaries before bundling for smaller package sizes.
 
 ### Internal
 
-* **Test Reliability**: Fixed flaky e2e tests on macOS by removing timing sensitivity and using proper async waiting patterns.
+* **Test Reliability**: Fixed flaky e2e tests on macOS by removing timing sensitivity.
+
+* **Release Workflow**: Added package upgrade tests and nix build test.
 
 ---
 
