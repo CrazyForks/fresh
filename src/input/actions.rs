@@ -1751,6 +1751,7 @@ pub fn action_to_events(
         | Action::PrevSplit
         | Action::Copy
         | Action::CopyAsImage
+        | Action::CopyWithTheme(_)
         | Action::Cut
         | Action::Paste
         | Action::AddCursorNextMatch

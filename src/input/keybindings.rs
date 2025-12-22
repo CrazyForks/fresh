@@ -268,6 +268,7 @@ pub enum Action {
     // Clipboard
     Copy,
     CopyAsImage,
+    CopyWithTheme(String),
     Cut,
     Paste,
 
@@ -568,6 +569,10 @@ impl Action {
 
             "copy" => Some(Action::Copy),
             "copy_as_image" => Some(Action::CopyAsImage),
+            "copy_with_theme" => {
+                let theme = args.get("theme")?.as_str()?;
+                Some(Action::CopyWithTheme(theme.to_string()))
+            }
             "cut" => Some(Action::Cut),
             "paste" => Some(Action::Paste),
 
@@ -1551,6 +1556,7 @@ impl KeybindingResolver {
             Action::SetMark => "Set mark (start selection)".to_string(),
             Action::Copy => "Copy".to_string(),
             Action::CopyAsImage => "Copy with formatting".to_string(),
+            Action::CopyWithTheme(theme) => format!("Copy with {} theme", theme),
             Action::Cut => "Cut".to_string(),
             Action::Paste => "Paste".to_string(),
             Action::AddCursorAbove => "Add cursor above".to_string(),
