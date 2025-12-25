@@ -14,10 +14,10 @@ To run Fresh, you can either open it without a file, or specify a file to open:
 
 ```bash
 # Open an empty buffer
-./target/release/fresh
+fresh
 
 # Open a file
-./target/release/fresh src/main.rs
+fresh src/main.rs
 ```
 
 ### Core Concepts
