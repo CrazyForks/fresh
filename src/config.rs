@@ -2073,16 +2073,17 @@ impl Config {
             LanguageConfig {
                 extensions: vec!["sh".to_string(), "bash".to_string()],
                 filenames: vec![
-                    ".bashrc".to_string(),
-                    ".bash_profile".to_string(),
                     ".bash_aliases".to_string(),
                     ".bash_logout".to_string(),
+                    ".bash_profile".to_string(),
+                    ".bashrc".to_string(),
+                    ".env".to_string(),
                     ".profile".to_string(),
-                    ".zshrc".to_string(),
-                    ".zprofile".to_string(),
-                    ".zshenv".to_string(),
                     ".zlogin".to_string(),
                     ".zlogout".to_string(),
+                    ".zprofile".to_string(),
+                    ".zshenv".to_string(),
+                    ".zshrc".to_string(),
                     // Common shell script files without extensions
                     "PKGBUILD".to_string(),
                     "APKBUILD".to_string(),
