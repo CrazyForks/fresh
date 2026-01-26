@@ -308,6 +308,8 @@ pub enum Action {
     Revert,
     ToggleAutoRevert,
     FormatBuffer,
+    TrimTrailingWhitespace,
+    EnsureFinalNewline,
 
     // Navigation
     GotoLine,
@@ -868,6 +870,70 @@ impl Action {
 
             _ => return None,
         })
+    }
+
+    /// Check if this action is a movement or editing action that should be
+    /// ignored in virtual buffers with hidden cursors.
+    pub fn is_movement_or_editing(&self) -> bool {
+        matches!(
+            self,
+            // Movement actions
+            Action::MoveLeft
+                | Action::MoveRight
+                | Action::MoveUp
+                | Action::MoveDown
+                | Action::MoveWordLeft
+                | Action::MoveWordRight
+                | Action::MoveWordEnd
+                | Action::MoveLineStart
+                | Action::MoveLineEnd
+                | Action::MovePageUp
+                | Action::MovePageDown
+                | Action::MoveDocumentStart
+                | Action::MoveDocumentEnd
+                // Selection actions
+                | Action::SelectLeft
+                | Action::SelectRight
+                | Action::SelectUp
+                | Action::SelectDown
+                | Action::SelectWordLeft
+                | Action::SelectWordRight
+                | Action::SelectWordEnd
+                | Action::SelectLineStart
+                | Action::SelectLineEnd
+                | Action::SelectDocumentStart
+                | Action::SelectDocumentEnd
+                | Action::SelectPageUp
+                | Action::SelectPageDown
+                | Action::SelectAll
+                | Action::SelectWord
+                | Action::SelectLine
+                | Action::ExpandSelection
+                // Block selection
+                | Action::BlockSelectLeft
+                | Action::BlockSelectRight
+                | Action::BlockSelectUp
+                | Action::BlockSelectDown
+                // Editing actions
+                | Action::InsertChar(_)
+                | Action::InsertNewline
+                | Action::InsertTab
+                | Action::DeleteBackward
+                | Action::DeleteForward
+                | Action::DeleteWordBackward
+                | Action::DeleteWordForward
+                | Action::DeleteLine
+                | Action::DeleteToLineEnd
+                | Action::DeleteToLineStart
+                | Action::TransposeChars
+                | Action::OpenLine
+                // Clipboard editing (but not Copy)
+                | Action::Cut
+                | Action::Paste
+                // Undo/Redo
+                | Action::Undo
+                | Action::Redo
+        )
     }
 }
 
@@ -1598,6 +1664,8 @@ impl KeybindingResolver {
             Action::Revert => t!("action.revert"),
             Action::ToggleAutoRevert => t!("action.toggle_auto_revert"),
             Action::FormatBuffer => t!("action.format_buffer"),
+            Action::TrimTrailingWhitespace => t!("action.trim_trailing_whitespace"),
+            Action::EnsureFinalNewline => t!("action.ensure_final_newline"),
             Action::GotoLine => t!("action.goto_line"),
             Action::GoToMatchingBracket => t!("action.goto_matching_bracket"),
             Action::JumpToNextError => t!("action.jump_to_next_error"),

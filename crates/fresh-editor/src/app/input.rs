@@ -330,6 +330,44 @@ impl Editor {
                     );
                 }
             }
+            Action::TrimTrailingWhitespace => {
+                match self.trim_trailing_whitespace() {
+                    Ok(true) => {
+                        self.set_status_message(
+                            t!("whitespace.trimmed").to_string(),
+                        );
+                    }
+                    Ok(false) => {
+                        self.set_status_message(
+                            t!("whitespace.no_trailing").to_string(),
+                        );
+                    }
+                    Err(e) => {
+                        self.set_status_message(
+                            t!("error.trim_whitespace_failed", error = e).to_string(),
+                        );
+                    }
+                }
+            }
+            Action::EnsureFinalNewline => {
+                match self.ensure_final_newline() {
+                    Ok(true) => {
+                        self.set_status_message(
+                            t!("whitespace.newline_added").to_string(),
+                        );
+                    }
+                    Ok(false) => {
+                        self.set_status_message(
+                            t!("whitespace.already_has_newline").to_string(),
+                        );
+                    }
+                    Err(e) => {
+                        self.set_status_message(
+                            t!("error.ensure_newline_failed", error = e).to_string(),
+                        );
+                    }
+                }
+            }
             Action::Copy => {
                 // Check if there's an active popup with text selection
                 let state = self.active_state();
@@ -1746,8 +1784,17 @@ impl Editor {
         split_id: crate::model::event::SplitId,
         buffer_id: BufferId,
         content_rect: ratatui::layout::Rect,
+        modifiers: crossterm::event::KeyModifiers,
     ) -> AnyhowResult<()> {
         use crate::model::event::Event;
+        use crossterm::event::KeyModifiers;
+
+        // Build modifiers string for plugins
+        let modifiers_str = if modifiers.contains(KeyModifiers::SHIFT) {
+            "shift".to_string()
+        } else {
+            String::new()
+        };
 
         // Dispatch MouseClick hook to plugins
         // Plugins can handle clicks on their virtual buffers
@@ -1758,7 +1805,7 @@ impl Editor {
                     column: col,
                     row,
                     button: "left".to_string(),
-                    modifiers: String::new(),
+                    modifiers: modifiers_str,
                     content_x: content_rect.x,
                     content_y: content_rect.y,
                 },
@@ -1835,14 +1882,27 @@ impl Editor {
                 return Ok(());
             }
 
-            // Move the primary cursor to this position and clear selection
+            // Move the primary cursor to this position
+            // If shift is held, extend selection; otherwise clear it
             let primary_cursor_id = state.cursors.primary_id();
+            let primary_cursor = state.cursors.primary();
+            let old_position = primary_cursor.position;
+            let old_anchor = primary_cursor.anchor;
+
+            // For shift+click: extend selection from current anchor (or position if no anchor) to click
+            let new_anchor = if modifiers.contains(KeyModifiers::SHIFT) {
+                // If already selecting, keep the existing anchor; otherwise anchor at current position
+                Some(old_anchor.unwrap_or(old_position))
+            } else {
+                None // Clear selection on normal click
+            };
+
             let event = Event::MoveCursor {
                 cursor_id: primary_cursor_id,
-                old_position: 0, // TODO: Get actual old position
+                old_position,
                 new_position: target_position,
-                old_anchor: None, // TODO: Get actual old anchor
-                new_anchor: None, // Clear selection on click
+                old_anchor,
+                new_anchor,
                 old_sticky_column: 0,
                 new_sticky_column: 0, // Reset sticky column for goto line
             };
@@ -1862,7 +1922,9 @@ impl Editor {
             // Set up drag selection state for potential text selection
             self.mouse_state.dragging_text_selection = true;
             self.mouse_state.drag_selection_split = Some(split_id);
-            self.mouse_state.drag_selection_anchor = Some(target_position);
+            // For shift+click, anchor stays at selection start; otherwise anchor at click position
+            self.mouse_state.drag_selection_anchor =
+                Some(new_anchor.unwrap_or(target_position));
         }
 
         Ok(())
@@ -2456,7 +2518,7 @@ impl Editor {
         let previous_buffer = self
             .split_view_states
             .get(&active_split)
-            .and_then(|vs| vs.previous_buffer);
+            .and_then(|vs| vs.previous_buffer());
 
         if let Some(prev_id) = previous_buffer {
             // Verify the buffer is still open in this split
