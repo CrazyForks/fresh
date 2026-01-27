@@ -40,7 +40,7 @@ Follow these steps to clear the **Ctrl + Alt + Up** and **Ctrl + Alt + Down** sh
 **TL;DR: Recommended Terminals**
 - **Kitty**: Best experience out of the box. Add `macos_option_as_alt left` to config.
 - **Ghostty**: Best experience out of the box. Add `macos-option-as-alt = left` to config.
-- **Terminal.app**: [Import Fresh.terminal profile](../scripts/macOS/Fresh.terminal) to fix keybindings.
+- **Terminal.app**: [Import Fresh.terminal profile](https://github.com/sinelaw/fresh/blob/master/crates/fresh-editor/scripts/macOS/Fresh.terminal) to fix keybindings.
 - **iTerm2**: Follow the [configuration instructions](#iterm2-setup) below.
 
 Fresh works best on macOS when you understand the interaction between the operating system, your terminal emulator, and the editor. This section covers common issues and recommended configurations.
@@ -88,7 +88,7 @@ To get the best experience with iTerm2, you need to enable CSI u support and con
     *   Set **Left Option key** to **Esc+**. This treats the Option key as Meta/Alt.
     *   Set **Right Option key** to **Normal** if you use it for special characters (or Esc+ if you want it as Alt too).
 
-![iTerm2 Profile Keys](macos-iterm-profile-keys.png)
+![iTerm2 Profile Keys](/images/macos-iterm-profile-keys.png)
 
 ### Apple Terminal.app Setup
 
@@ -98,7 +98,7 @@ Apple's built-in Terminal requires manual configuration to work well with modern
 1.  Go to **Settings** > **Profiles** > **Keyboard**.
 2.  Check **Use Option as Meta key**.
 
-![Terminal Option as Meta](mac-terminal-option-as-meta.png)
+![Terminal Option as Meta](/images/mac-terminal-option-as-meta.png)
 
 **Key Mappings:**
 Fresh relies on Shift+Arrow keys for selection, but Terminal.app often doesn't send these by default.
@@ -149,7 +149,7 @@ The full list of keys:
     Left: \033[1;2D
 
 
-![Terminal Keymaps](mac-terminal-keymaps.png)
+![Terminal Keymaps](/images/mac-terminal-keymaps.png)
 
 ### Keyboard Enhancement Flags
 

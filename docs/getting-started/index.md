@@ -2,7 +2,7 @@
 
 ## Installation
 
-See the [Installation section in the README](../README.md#installation) for all available installation methods, including Homebrew, AUR, .deb/.rpm packages, npm, crates.io, and building from source.
+See the [Installation section in the README](https://github.com/sinelaw/fresh#installation) for all available installation methods, including Homebrew, AUR, .deb/.rpm packages, npm, crates.io, and building from source.
 
 
 
