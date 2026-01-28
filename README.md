@@ -40,10 +40,10 @@ Fresh is engineered for speed. It delivers a low-latency experience, with text a
 - **Plugins & Extensibility**: TypeScript plugins, color highlighter, TODO highlighter, merge conflicts, path complete, keymaps
 - **Internationalization**: Multiple language support (see [`locales/`](locales/) for available languages), plugin translation system
 
-![Fresh Demo](docs/public/assets/fresh-demo2.gif)
-![Fresh Screenshot](docs/public/assets/screenshot1.png)
-![Fresh Screenshot](docs/public/assets/screenshot2.png)
-![Fresh Screenshot](docs/public/assets/screenshot3.png)
+![Fresh Demo](docs/fresh-demo2.gif)
+![Fresh Screenshot](docs/public/images/screenshot1.png)
+![Fresh Screenshot](docs/public/images/screenshot2.png)
+![Fresh Screenshot](docs/public/images/screenshot3.png)
 
 ## Installation
 
