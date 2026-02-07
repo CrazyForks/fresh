@@ -6,6 +6,8 @@ A terminal-based text editor. [Official Website →](https://sinelaw.github.io/f
 
 **[Contributing](#contributing)**
 
+**[Discord](https://discord.gg/qUutBj9t)**
+
 ## Why?
 
 Why another text editor? Fresh brings the intuitive, conventional UX of editors like VS Code and Sublime Text to the terminal.
