@@ -74,17 +74,83 @@ The manifest configures the language pack:
 | `tabSize` | Default indentation width |
 | `useTabs` | Use tabs instead of spaces |
 | `autoIndent` | Enable automatic indentation |
-| `formatter.command` | Formatter command (e.g., `prettier`) |
-| `formatter.args` | Arguments for the formatter |
+| `formatter.command` | Formatter command (e.g., `prettier`, `rustfmt`) |
+| `formatter.args` | Arguments for the formatter (file path is passed automatically) |
+
+**Formatter Examples:**
+
+```json
+// Prettier (JavaScript/TypeScript/etc.)
+"formatter": {
+  "command": "prettier",
+  "args": ["--write"]
+}
+
+// Prettier with plugin (Svelte, Vue, etc.)
+"formatter": {
+  "command": "prettier",
+  "args": ["--write", "--plugin", "prettier-plugin-svelte"]
+}
+
+// Black (Python)
+"formatter": {
+  "command": "black",
+  "args": ["-"]
+}
+
+// rustfmt (Rust)
+"formatter": {
+  "command": "rustfmt",
+  "args": []
+}
+
+// gofmt (Go)
+"formatter": {
+  "command": "gofmt",
+  "args": ["-w"]
+}
+```
+
+**Note:** The file path is automatically appended to the args by Fresh. Some formatters expect stdin (use `"-"` as arg), others expect file path.
 
 ### LSP Configuration
 
 | Field | Description |
 |-------|-------------|
-| `command` | LSP server executable |
-| `args` | Arguments to pass to the server |
+| `command` | LSP server executable (e.g., `rust-analyzer`, `typescript-language-server`) |
+| `args` | Arguments to pass to the server (e.g., `["--stdio"]`) |
 | `autoStart` | Start server when opening matching files |
-| `initializationOptions` | Custom LSP initialization options |
+| `initializationOptions` | Custom LSP initialization options (language-specific JSON) |
+
+**Finding LSP Servers:**
+- [Language Server Protocol Implementations](https://microsoft.github.io/language-server-protocol/implementors/servers/) - Official registry
+- [langserver.org](https://langserver.org/) - Community directory
+
+**Common LSP Servers:**
+
+| Language | Server | Command | Installation |
+|----------|--------|---------|--------------|
+| Rust | rust-analyzer | `rust-analyzer` | `rustup component add rust-analyzer` |
+| TypeScript/JavaScript | typescript-language-server | `typescript-language-server` | `npm install -g typescript-language-server` |
+| Python | pyright | `pyright-langserver` | `npm install -g pyright` |
+| Go | gopls | `gopls` | `go install golang.org/x/tools/gopls@latest` |
+| C/C++ | clangd | `clangd` | System package manager |
+
+**Example with initialization options:**
+```json
+"lsp": {
+  "command": "rust-analyzer",
+  "args": [],
+  "autoStart": true,
+  "initializationOptions": {
+    "cargo": {
+      "buildScripts": {
+        "enable": true
+      }
+    }
+  }
+}
+```
 
 ## Finding Existing Grammars
 
@@ -260,6 +326,42 @@ Always validate your package before publishing:
 # Check grammar compatibility
 fresh --check-plugin /path/to/your-language-pack
 ```
+
+## Troubleshooting
+
+### Debugging Commands
+
+```bash
+# Show log locations
+fresh --show-paths
+
+# View Fresh logs
+tail -f ~/.local/state/fresh/logs/fresh-*.log
+
+# Check LSP logs
+tail -f ~/.local/state/fresh/logs/lsp/<language>-*.log
+
+# Validate package
+./validate.sh
+fresh --check-plugin /path/to/your-language-pack
+```
+
+### Common Issues
+
+**Syntax highlighting not working:**
+- Check logs for `Failed to parse grammar` - most often caused by `extends` directive (see compatibility warning)
+- Verify file extension in package.json: use `["py"]` not `[".py"]`
+- Confirm grammar file path is correct
+
+**LSP server not starting:**
+- Verify server is installed: `which <server-command>`
+- Check LSP logs for error messages
+- See [LSP server registry](https://microsoft.github.io/language-server-protocol/implementors/servers/) for correct invocation
+
+**Formatter not working:**
+- Verify formatter is installed: `which <formatter>`
+- Test manually: `<formatter> <args> <file>`
+- Check formatter documentation for correct arguments
 
 ## Publishing
 
