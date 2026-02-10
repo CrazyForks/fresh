@@ -55,12 +55,16 @@ pub(super) struct InteractiveReplaceState {
     pub replacement: String,
     /// Current match position (byte offset of the match we're at)
     pub current_match_pos: usize,
+    /// Length of the current match in bytes (may differ from search.len() for regex)
+    pub current_match_len: usize,
     /// Starting position (to detect when we've wrapped around full circle)
     pub start_pos: usize,
     /// Whether we've wrapped around to the beginning
     pub has_wrapped: bool,
     /// Number of replacements made so far
     pub replacements_made: usize,
+    /// Compiled regex for regex-mode replace (None when regex mode is off)
+    pub regex: Option<regex::bytes::Regex>,
 }
 
 /// The kind of buffer (file-backed or virtual)

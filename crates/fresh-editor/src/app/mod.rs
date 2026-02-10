@@ -25,6 +25,7 @@ mod plugin_commands;
 mod popup_actions;
 mod prompt_actions;
 mod recovery_actions;
+mod regex_replace;
 mod render;
 mod settings_actions;
 mod shell_command;
