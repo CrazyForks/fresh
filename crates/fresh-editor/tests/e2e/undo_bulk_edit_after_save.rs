@@ -140,9 +140,7 @@ fn test_undo_past_indent_after_save_does_not_corrupt_buffer() {
 
     // Step 1: Select multiple lines
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap();
-    harness
-        .send_key(KeyCode::Home, KeyModifiers::NONE)
-        .unwrap();
+    harness.send_key(KeyCode::Home, KeyModifiers::NONE).unwrap();
     // Select two lines with Shift+Down
     harness
         .send_key(KeyCode::Down, KeyModifiers::SHIFT)
@@ -152,9 +150,7 @@ fn test_undo_past_indent_after_save_does_not_corrupt_buffer() {
         .unwrap();
 
     // Step 2: Indent selection (Tab) -> creates a BulkEdit
-    harness
-        .send_key(KeyCode::Tab, KeyModifiers::NONE)
-        .unwrap();
+    harness.send_key(KeyCode::Tab, KeyModifiers::NONE).unwrap();
     harness.render().unwrap();
 
     // Step 3: Save
@@ -261,9 +257,7 @@ fn test_move_line_down_save_undo_minimal() {
     let original_content = harness.get_buffer_content().unwrap();
 
     // Step 1: Move line down (Alt+Down) - this is a BulkEdit
-    harness
-        .send_key(KeyCode::Down, KeyModifiers::ALT)
-        .unwrap();
+    harness.send_key(KeyCode::Down, KeyModifiers::ALT).unwrap();
     harness.render().unwrap();
 
     let moved = harness.get_buffer_content().unwrap();
