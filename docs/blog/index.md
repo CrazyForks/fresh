@@ -8,6 +8,14 @@ Updates on new features and changes in Fresh.
 
 <div class="blog-grid">
 
+<a class="blog-card" href="./fresh-0.2/">
+  <img src="./productivity/keybinding-editor/showcase.gif" alt="Fresh 0.2" />
+  <div class="blog-card-body">
+    <h3>Fresh 0.2</h3>
+    <p>Session persistence, keybinding editor, improved line editing, regex capture groups, and more.</p>
+  </div>
+</a>
+
 <a class="blog-card" href="./editing/">
   <img src="./editing/multi-cursor/showcase.gif" alt="Editing Features" />
   <div class="blog-card-body">

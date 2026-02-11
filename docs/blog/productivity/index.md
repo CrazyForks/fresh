@@ -5,6 +5,8 @@ outline: false
 
 # Productivity Features
 
+*February 11, 2026*
+
 Beyond text editing — the tools that make Fresh a complete development environment in your terminal.
 
 ## Command Palette

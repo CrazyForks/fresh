@@ -28,6 +28,7 @@ export default defineConfig({
         text: "Blog",
         link: "/blog/",
         items: [
+          { text: "Fresh 0.2", link: "/blog/fresh-0.2/" },
           { text: "Editing Features", link: "/blog/editing" },
           { text: "Productivity Features", link: "/blog/productivity" },
           { text: "Customization & Themes", link: "/blog/themes" },

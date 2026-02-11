@@ -5,6 +5,8 @@ outline: false
 
 # Editing Features
 
+*February 11, 2026*
+
 The core text editing capabilities that make Fresh feel like a modern editor in your terminal.
 
 ## Multi-Cursor Editing

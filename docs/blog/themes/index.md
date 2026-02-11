@@ -5,6 +5,8 @@ outline: false
 
 # Customization & Themes
 
+*February 11, 2026*
+
 Make Fresh your own — themes, settings, and keybindings all have dedicated visual editors.
 
 ## Select Theme
