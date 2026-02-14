@@ -76,37 +76,6 @@ impl Default for BufferSettings {
     }
 }
 
-/// Compose/view-transform rendering state.
-///
-/// These fields control the compose (semi-WYSIWYG) rendering pipeline and are
-/// never touched by the core editing path (`apply_insert`/`apply_delete`/cursor movement).
-/// They are duplicated in `SplitViewState` for per-split overrides and extracted
-/// into `ViewPreferences` at render time.
-#[derive(Debug, Clone)]
-pub struct ComposeState {
-    pub view_mode: ViewMode,
-    pub compose_width: Option<u16>,
-    pub compose_prev_line_numbers: Option<bool>,
-    pub compose_column_guides: Option<Vec<u16>>,
-    pub view_transform: Option<fresh_core::api::ViewTransformPayload>,
-    pub is_composite_buffer: bool,
-    pub debug_highlight_mode: bool,
-}
-
-impl Default for ComposeState {
-    fn default() -> Self {
-        Self {
-            view_mode: ViewMode::Source,
-            compose_width: None,
-            compose_prev_line_numbers: None,
-            compose_column_guides: None,
-            view_transform: None,
-            is_composite_buffer: false,
-            debug_highlight_mode: false,
-        }
-    }
-}
-
 /// The complete editor state - everything needed to represent the current editing session
 ///
 /// NOTE: Viewport is NOT stored here - it lives in SplitViewState.
@@ -173,8 +142,11 @@ pub struct EditorState {
     /// Semantic highlighter for word occurrence highlighting
     pub reference_highlighter: ReferenceHighlighter,
 
-    /// Compose/view-transform rendering state
-    pub compose: ComposeState,
+    /// Whether this buffer is a composite view (e.g., side-by-side diff)
+    pub is_composite_buffer: bool,
+
+    /// Debug mode: reveal highlight/overlay spans (WordPerfect-style)
+    pub debug_highlight_mode: bool,
 
     /// Debounced semantic highlight cache
     pub reference_highlight_overlay: ReferenceHighlightOverlay,
@@ -219,7 +191,8 @@ impl EditorState {
             editing_disabled: false,
             buffer_settings: BufferSettings::default(),
             reference_highlighter: ReferenceHighlighter::new(),
-            compose: ComposeState::default(),
+            is_composite_buffer: false,
+            debug_highlight_mode: false,
             reference_highlight_overlay: ReferenceHighlightOverlay::new(),
             bracket_highlight_overlay: BracketHighlightOverlay::new(),
             semantic_tokens: None,
@@ -306,7 +279,8 @@ impl EditorState {
             editing_disabled: false,
             buffer_settings: BufferSettings::default(),
             reference_highlighter,
-            compose: ComposeState::default(),
+            is_composite_buffer: false,
+            debug_highlight_mode: false,
             reference_highlight_overlay: ReferenceHighlightOverlay::new(),
             bracket_highlight_overlay: BracketHighlightOverlay::new(),
             semantic_tokens: None,
@@ -368,7 +342,8 @@ impl EditorState {
             editing_disabled: false,
             buffer_settings: BufferSettings::default(),
             reference_highlighter,
-            compose: ComposeState::default(),
+            is_composite_buffer: false,
+            debug_highlight_mode: false,
             reference_highlight_overlay: ReferenceHighlightOverlay::new(),
             bracket_highlight_overlay: BracketHighlightOverlay::new(),
             semantic_tokens: None,
@@ -415,7 +390,8 @@ impl EditorState {
             editing_disabled: false,
             buffer_settings: BufferSettings::default(),
             reference_highlighter,
-            compose: ComposeState::default(),
+            is_composite_buffer: false,
+            debug_highlight_mode: false,
             reference_highlight_overlay: ReferenceHighlightOverlay::new(),
             bracket_highlight_overlay: BracketHighlightOverlay::new(),
             semantic_tokens: None,

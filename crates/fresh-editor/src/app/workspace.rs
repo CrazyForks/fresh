@@ -1053,13 +1053,10 @@ impl Editor {
             view_state.switch_buffer(active_id);
 
             // If no per-buffer file_state was saved, apply split-level settings
-            let active_has_file_state = split_state.file_states.values().any(|_| {
-                // Check if the active buffer's path was in file_states
-                split_state
-                    .file_states
-                    .keys()
-                    .any(|rel_path| path_to_buffer.get(rel_path).copied() == Some(active_id))
-            });
+            let active_has_file_state = split_state
+                .file_states
+                .keys()
+                .any(|rel_path| path_to_buffer.get(rel_path).copied() == Some(active_id));
             if !active_has_file_state {
                 view_state.active_state_mut().view_mode = restored_view_mode.clone();
                 view_state.active_state_mut().compose_width = split_state.compose_width;
@@ -1069,7 +1066,6 @@ impl Editor {
             if let Some(editor_state) = self.buffers.get_mut(&active_id) {
                 let buf_state = view_state.active_state();
                 editor_state.cursors = buf_state.cursors.clone();
-                editor_state.compose.view_mode = buf_state.view_mode.clone();
             }
 
             // Set this buffer as active in the split (fires buffer_activated hook)

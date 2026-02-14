@@ -511,11 +511,8 @@ impl StatusBarRenderer {
             String::new()
         };
 
-        // View mode indicator
-        let _mode_label = match state.compose.view_mode {
-            crate::state::ViewMode::Compose => " | Compose",
-            _ => "",
-        };
+        // View mode indicator (view_mode now lives in SplitViewState/BufferViewState)
+        // Not available here — status bar shows only buffer-level info.
 
         let cursor = *state.primary_cursor();
 

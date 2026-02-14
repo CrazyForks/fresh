@@ -4331,16 +4331,21 @@ impl Editor {
                     .get(buffer_id)
                     .map(|m| m.is_virtual())
                     .unwrap_or(false);
-                let view_mode = match state.compose.view_mode {
-                    crate::state::ViewMode::Source => "source",
-                    crate::state::ViewMode::Compose => "compose",
-                };
-                // Find compose_width from any split that has this buffer active
-                let compose_width = self
+                // Find view_mode and compose_width from any split that has this buffer
+                let split_state = self
                     .split_view_states
                     .values()
-                    .find(|vs| vs.open_buffers.contains(buffer_id))
-                    .and_then(|vs| vs.compose_width);
+                    .find(|vs| vs.open_buffers.contains(buffer_id));
+                let view_mode = split_state
+                    .and_then(|vs| vs.buffer_state(*buffer_id))
+                    .map(|bs| match bs.view_mode {
+                        crate::state::ViewMode::Source => "source",
+                        crate::state::ViewMode::Compose => "compose",
+                    })
+                    .unwrap_or("source");
+                let compose_width = split_state
+                    .and_then(|vs| vs.buffer_state(*buffer_id))
+                    .and_then(|bs| bs.compose_width);
                 let buffer_info = BufferInfo {
                     id: *buffer_id,
                     path: state.buffer.file_path().map(|p| p.to_path_buf()),

@@ -956,17 +956,13 @@ impl Editor {
     }
 
     /// Handle SetViewMode command
-    pub(super) fn handle_set_view_mode(&mut self, buffer_id: BufferId, mode: &str) {
+    pub(super) fn handle_set_view_mode(&mut self, _buffer_id: BufferId, mode: &str) {
         use crate::state::ViewMode;
         let view_mode = match mode {
             "compose" => ViewMode::Compose,
             _ => ViewMode::Source,
         };
-        // Set on the buffer's EditorState
-        if let Some(state) = self.buffers.get_mut(&buffer_id) {
-            state.compose.view_mode = view_mode.clone();
-        }
-        // Set on the active split's SplitViewState
+        // Set on the active split's per-buffer view state (source of truth)
         let active_split = self.split_manager.active_split();
         if let Some(view_state) = self.split_view_states.get_mut(&active_split) {
             view_state.view_mode = view_mode;
