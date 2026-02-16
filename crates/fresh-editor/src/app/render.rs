@@ -336,7 +336,8 @@ impl Editor {
             // ensures a follow-up render cycle picks up any missed commands.
             let commands = self.plugin_manager.process_commands();
             if !commands.is_empty() {
-                let cmd_names: Vec<String> = commands.iter().map(|c| c.debug_variant_name()).collect();
+                let cmd_names: Vec<String> =
+                    commands.iter().map(|c| c.debug_variant_name()).collect();
                 tracing::info!(count = commands.len(), cmds = ?cmd_names, "process_commands during render");
             }
             for command in commands {
