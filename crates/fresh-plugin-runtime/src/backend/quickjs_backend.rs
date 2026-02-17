@@ -791,6 +791,7 @@ impl JsEditorApi {
     }
 
     /// Get primary cursor info for active buffer
+    #[plugin_api(ts_return = "CursorInfo | null")]
     pub fn get_primary_cursor<'js>(&self, ctx: rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let cursor = if let Ok(s) = self.state_snapshot.read() {
             s.primary_cursor.clone()
@@ -802,6 +803,7 @@ impl JsEditorApi {
     }
 
     /// Get all cursors for active buffer
+    #[plugin_api(ts_return = "CursorInfo[]")]
     pub fn get_all_cursors<'js>(&self, ctx: rquickjs::Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let cursors = if let Ok(s) = self.state_snapshot.read() {
             s.all_cursors.clone()
@@ -813,6 +815,7 @@ impl JsEditorApi {
     }
 
     /// Get all cursor positions as byte offsets
+    #[plugin_api(ts_return = "number[]")]
     pub fn get_all_cursor_positions<'js>(
         &self,
         ctx: rquickjs::Ctx<'js>,
