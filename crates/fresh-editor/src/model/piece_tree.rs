@@ -863,8 +863,13 @@ impl PieceTree {
                 let left_end = current_offset + left_bytes;
                 if insert_offset < left_end {
                     // Insert is in left subtree - recurse left, clone right
-                    let new_left =
-                        Self::path_copy_insert(left, current_offset, insert_offset, insert_leaf, buffers);
+                    let new_left = Self::path_copy_insert(
+                        left,
+                        current_offset,
+                        insert_offset,
+                        insert_leaf,
+                        buffers,
+                    );
                     let new_left_bytes = new_left.total_bytes();
                     let new_lf_left = new_left.total_line_feeds();
                     Arc::new(PieceTreeNode::Internal {
@@ -875,8 +880,13 @@ impl PieceTree {
                     })
                 } else if insert_offset > left_end {
                     // Insert is in right subtree - clone left, recurse right
-                    let new_right =
-                        Self::path_copy_insert(right, left_end, insert_offset, insert_leaf, buffers);
+                    let new_right = Self::path_copy_insert(
+                        right,
+                        left_end,
+                        insert_offset,
+                        insert_leaf,
+                        buffers,
+                    );
                     Arc::new(PieceTreeNode::Internal {
                         left_bytes: *left_bytes,
                         lf_left: *lf_left,
@@ -888,8 +898,13 @@ impl PieceTree {
                     // Check if right subtree starts at insert_offset - if so,
                     // insert at the beginning of the right subtree.
                     // We need to recurse into right to prepend.
-                    let new_right =
-                        Self::path_copy_insert(right, left_end, insert_offset, insert_leaf, buffers);
+                    let new_right = Self::path_copy_insert(
+                        right,
+                        left_end,
+                        insert_offset,
+                        insert_leaf,
+                        buffers,
+                    );
                     Arc::new(PieceTreeNode::Internal {
                         left_bytes: *left_bytes,
                         lf_left: *lf_left,
@@ -922,12 +937,8 @@ impl PieceTree {
                     );
 
                     let leaf_before = LeafData::new(*location, *offset, before_bytes, lf_before);
-                    let leaf_after = LeafData::new(
-                        *location,
-                        offset + before_bytes,
-                        after_bytes,
-                        lf_after,
-                    );
+                    let leaf_after =
+                        LeafData::new(*location, offset + before_bytes, after_bytes, lf_after);
 
                     // Build a small subtree: [before, insert, after]
                     Self::build_balanced(&[leaf_before, insert_leaf, leaf_after])
@@ -976,8 +987,13 @@ impl PieceTree {
 
                 // Delete range entirely in left subtree
                 if delete_end <= left_end {
-                    let new_left =
-                        Self::path_copy_delete(left, current_offset, delete_start, delete_end, buffers);
+                    let new_left = Self::path_copy_delete(
+                        left,
+                        current_offset,
+                        delete_start,
+                        delete_end,
+                        buffers,
+                    );
                     let new_left_bytes = new_left.total_bytes();
                     if new_left_bytes == 0 {
                         // Left is empty after delete, promote right
@@ -1010,10 +1026,20 @@ impl PieceTree {
                 }
 
                 // Delete range spans both children
-                let new_left =
-                    Self::path_copy_delete(left, current_offset, delete_start, left_end.min(delete_end), buffers);
-                let new_right =
-                    Self::path_copy_delete(right, left_end, left_end.max(delete_start), delete_end, buffers);
+                let new_left = Self::path_copy_delete(
+                    left,
+                    current_offset,
+                    delete_start,
+                    left_end.min(delete_end),
+                    buffers,
+                );
+                let new_right = Self::path_copy_delete(
+                    right,
+                    left_end,
+                    left_end.max(delete_start),
+                    delete_end,
+                    buffers,
+                );
 
                 let new_left_bytes = new_left.total_bytes();
                 let new_right_bytes = new_right.total_bytes();
@@ -1211,7 +1237,14 @@ impl PieceTree {
         buffers: &[StringBuffer],
     ) -> Cursor {
         let offset = self.position_to_offset(line, column, buffers);
-        self.insert(offset, location, buffer_offset, bytes, Some(line_feed_cnt), buffers)
+        self.insert(
+            offset,
+            location,
+            buffer_offset,
+            bytes,
+            Some(line_feed_cnt),
+            buffers,
+        )
     }
 
     /// Helper to collect leaves while splitting at insertion point
@@ -1540,12 +1573,7 @@ impl PieceTree {
                 let mut off = 0;
                 while off < leaf.bytes {
                     let len = max_bytes.min(leaf.bytes - off);
-                    new_leaves.push(LeafData::new(
-                        leaf.location,
-                        leaf.offset + off,
-                        len,
-                        None,
-                    ));
+                    new_leaves.push(LeafData::new(leaf.location, leaf.offset + off, len, None));
                     off += len;
                 }
             }

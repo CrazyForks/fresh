@@ -5,7 +5,7 @@ use rust_i18n::t;
 impl Editor {
     /// Render the editor to the terminal
     pub fn render(&mut self, frame: &mut Frame) {
-        let _span = tracing::debug_span!("render").entered();
+        let _span = tracing::trace_span!("render").entered();
         let size = frame.area();
 
         // Save frame dimensions for recompute_layout (used by macro replay)
@@ -53,7 +53,7 @@ impl Editor {
         }
 
         {
-            let _span = tracing::debug_span!("prepare_for_render").entered();
+            let _span = tracing::trace_span!("prepare_for_render").entered();
             for (split_id, view_state) in &self.split_view_states {
                 if let Some(buffer_id) = self.split_manager.get_buffer_id((*split_id).into()) {
                     if let Some(state) = self.buffers.get_mut(&buffer_id) {
@@ -395,7 +395,7 @@ impl Editor {
 
         let is_maximized = self.split_manager.is_maximized();
 
-        let _content_span = tracing::debug_span!("render_content").entered();
+        let _content_span = tracing::trace_span!("render_content").entered();
         let (
             split_areas,
             tab_layouts,

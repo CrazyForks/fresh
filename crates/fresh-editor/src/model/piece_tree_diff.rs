@@ -45,7 +45,13 @@ pub fn diff_piece_trees(
     let mut before_leaves = Vec::new();
     let mut after_leaves = Vec::new();
     let mut nodes_visited: usize = 0;
-    diff_collect_leaves(before, after, &mut before_leaves, &mut after_leaves, &mut nodes_visited);
+    diff_collect_leaves(
+        before,
+        after,
+        &mut before_leaves,
+        &mut after_leaves,
+        &mut nodes_visited,
+    );
 
     let before_leaves = normalize_leaves(before_leaves);
     let after_leaves = normalize_leaves(after_leaves);

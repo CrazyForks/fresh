@@ -1093,7 +1093,7 @@ impl SplitRenderer {
                     .unwrap_or_default();
 
                 {
-                    let _span = tracing::debug_span!("sync_viewport_to_content").entered();
+                    let _span = tracing::trace_span!("sync_viewport_to_content").entered();
                     Self::sync_viewport_to_content(
                         &mut viewport,
                         &mut state.buffer,
@@ -1112,7 +1112,7 @@ impl SplitRenderer {
                     .map(|vs| &mut vs.folds)
                     .unwrap_or(&mut empty_folds);
 
-                let _render_buf_span = tracing::debug_span!("render_buffer_in_split").entered();
+                let _render_buf_span = tracing::trace_span!("render_buffer_in_split").entered();
                 let split_view_mappings = Self::render_buffer_in_split(
                     frame,
                     state,
@@ -1151,7 +1151,7 @@ impl SplitRenderer {
                 // For large files, we'll use a constant thumb size
                 let buffer_len = state.buffer.len();
                 let (total_lines, top_line) = {
-                    let _span = tracing::debug_span!("scrollbar_line_counts").entered();
+                    let _span = tracing::trace_span!("scrollbar_line_counts").entered();
                     Self::scrollbar_line_counts(
                         state,
                         &viewport,
@@ -5143,7 +5143,7 @@ impl SplitRenderer {
         let view_transform_for_rebuild = view_transform.clone();
 
         let view_data = {
-            let _span = tracing::debug_span!("build_view_data").entered();
+            let _span = tracing::trace_span!("build_view_data").entered();
             Self::build_view_data(
                 state,
                 viewport,

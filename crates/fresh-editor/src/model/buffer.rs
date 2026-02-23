@@ -2000,7 +2000,7 @@ impl TextBuffer {
     /// NOTE: Currently loads entire buffers on-demand. Future optimization would split
     /// large pieces and load only LOAD_CHUNK_SIZE chunks at a time.
     pub fn get_text_range_mut(&mut self, offset: usize, bytes: usize) -> Result<Vec<u8>> {
-        let _span = tracing::debug_span!("get_text_range_mut", offset, bytes).entered();
+        let _span = tracing::trace_span!("get_text_range_mut", offset, bytes).entered();
         if bytes == 0 {
             return Ok(Vec::new());
         }
@@ -2032,7 +2032,7 @@ impl TextBuffer {
                 if needs_loading {
                     // Check if piece is too large for full loading
                     if piece_view.bytes > LOAD_CHUNK_SIZE {
-                        let _span = tracing::debug_span!(
+                        let _span = tracing::trace_span!(
                             "chunk_split_and_load",
                             piece_bytes = piece_view.bytes,
                             buffer_id,
@@ -2060,7 +2060,7 @@ impl TextBuffer {
 
                         // Split the piece to isolate the chunk
                         {
-                            let _span = tracing::debug_span!("split_piece", chunk_bytes).entered();
+                            let _span = tracing::trace_span!("split_piece", chunk_bytes).entered();
                             if chunk_start_offset_in_piece > 0 {
                                 self.piece_tree
                                     .split_at_offset(split_start_in_doc, &self.buffers);
@@ -2097,7 +2097,7 @@ impl TextBuffer {
 
                         // Load the chunk buffer using the FileSystem trait
                         {
-                            let _span = tracing::debug_span!("load_chunk", chunk_bytes).entered();
+                            let _span = tracing::trace_span!("load_chunk", chunk_bytes).entered();
                             self.buffers
                                 .get_mut(new_buffer_id)
                                 .context("Chunk buffer not found")?
@@ -2110,7 +2110,7 @@ impl TextBuffer {
                         break;
                     } else {
                         // Piece is small enough, load the entire buffer
-                        let _span = tracing::debug_span!(
+                        let _span = tracing::trace_span!(
                             "load_small_buffer",
                             piece_bytes = piece_view.bytes,
                             buffer_id,
