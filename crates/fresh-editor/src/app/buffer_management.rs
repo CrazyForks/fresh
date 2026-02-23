@@ -2267,9 +2267,7 @@ impl Editor {
                 updates: Vec::new(),
                 open_goto_line_on_complete: open_goto_line,
             });
-            self.set_status_message(
-                t!("goto.scanning_progress", percent = 0).to_string(),
-            );
+            self.set_status_message(t!("goto.scanning_progress", percent = 0).to_string());
         }
     }
 
