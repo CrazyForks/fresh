@@ -1,6 +1,6 @@
 # Release Notes
 
-## 0.2.7
+## 0.2.8
 
 ### Features
 
@@ -10,7 +10,7 @@
 
 * **Markdown Source Editing**: New plugin for smart Markdown source-mode editing — auto-continues list items on Enter (bullets, ordered lists, checkboxes), removes empty markers, Tab indents + cycles bullet style (#1095).
 
-* **GUI mode - can run without terminal** (experimental): GPU-accelerated windowed mode via winit + wgpu. Handles macOS Left/Right Option key distinction, software cursor rendering, and correct mouse positioning. Build with `--features gui` and run with `--gui` to try it.
+* **GUI mode - can run without terminal** (highly experimental): GPU-accelerated windowed mode via winit + wgpu. Build with `--features gui` and run with `--gui` to try it.
 
 ### Improvements
 
