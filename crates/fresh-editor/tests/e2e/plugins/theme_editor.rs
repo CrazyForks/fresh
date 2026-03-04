@@ -2471,3 +2471,70 @@ editor.setStatus("Delete theme test plugin loaded");
         "Theme file should be deleted (moved to trash)"
     );
 }
+
+/// Test that "Inspect Theme at Cursor" command opens the theme editor
+/// at the correct field for the theme key under the cursor.
+#[test]
+fn test_inspect_theme_at_cursor_opens_theme_editor() {
+    init_tracing_from_env();
+
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let project_root = temp_dir.path().join("project_root");
+    fs::create_dir(&project_root).unwrap();
+
+    let plugins_dir = project_root.join("plugins");
+    fs::create_dir(&plugins_dir).unwrap();
+    copy_plugin(&plugins_dir, "theme_editor");
+
+    // Create a test file so the cursor is on editor content
+    let test_file = project_root.join("test.txt");
+    fs::write(&test_file, "Hello world\nLine two\nLine three\n").unwrap();
+
+    let mut harness =
+        EditorTestHarness::with_config_and_working_dir(120, 40, Default::default(), project_root)
+            .unwrap();
+
+    harness.open_file(&test_file).unwrap();
+    harness.render().unwrap();
+
+    // Cursor is now on editor content — run "Inspect Theme at Cursor"
+    harness
+        .send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+
+    harness.type_text("Inspect Theme at Cursor").unwrap();
+    harness.render().unwrap();
+
+    harness.assert_screen_contains("Inspect Theme at Cursor");
+
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness.render().unwrap();
+
+    // Wait for the theme editor to open via the hook
+    harness
+        .wait_until(|h| {
+            let screen = h.screen_to_string();
+            screen.contains("Theme Editor") || screen.contains("*Theme Editor*")
+        })
+        .unwrap();
+
+    let screen = harness.screen_to_string();
+
+    // The theme editor should auto-load the current theme (no "Select theme" prompt)
+    assert!(
+        !screen.contains("Select theme to edit"),
+        "Should NOT prompt for theme selection — should auto-load current theme. Screen:\n{}",
+        screen
+    );
+
+    // The editor section should be expanded since cursor was on editor content
+    // (the resolved key will be editor.fg or editor.bg, so "Editor" section expands)
+    assert!(
+        screen.contains("editor.fg") || screen.contains("editor.bg"),
+        "Theme editor should show editor.fg or editor.bg key (cursor was on editor content). Screen:\n{}",
+        screen
+    );
+}
