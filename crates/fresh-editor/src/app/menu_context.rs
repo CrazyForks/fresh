@@ -64,9 +64,16 @@ impl Editor {
         let scroll_sync = self.same_buffer_scroll_sync;
         let has_same_buffer_splits = self.has_same_buffer_splits();
 
+        // Keybinding map state
+        let active_keymap: &str = &self.config.active_keybinding_map;
+
         // Apply all context values
         self.menu_state
             .context
+            .set(context_keys::KEYMAP_DEFAULT, active_keymap == "default")
+            .set(context_keys::KEYMAP_EMACS, active_keymap == "emacs")
+            .set(context_keys::KEYMAP_VSCODE, active_keymap == "vscode")
+            .set(context_keys::KEYMAP_MACOS_GUI, active_keymap == "macos-gui")
             .set(context_keys::LINE_NUMBERS, line_numbers)
             .set(context_keys::LINE_WRAP, line_wrap)
             .set(context_keys::COMPOSE_MODE, compose_mode)

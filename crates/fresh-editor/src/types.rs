@@ -30,6 +30,10 @@ pub mod context_keys {
     pub const HORIZONTAL_SCROLLBAR: &str = "horizontal_scrollbar";
     pub const SCROLL_SYNC: &str = "scroll_sync";
     pub const HAS_SAME_BUFFER_SPLITS: &str = "has_same_buffer_splits";
+    pub const KEYMAP_DEFAULT: &str = "keymap_default";
+    pub const KEYMAP_EMACS: &str = "keymap_emacs";
+    pub const KEYMAP_VSCODE: &str = "keymap_vscode";
+    pub const KEYMAP_MACOS_GUI: &str = "keymap_macos_gui";
 }
 
 /// Configuration for process resource limits

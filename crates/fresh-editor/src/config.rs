@@ -2115,7 +2115,7 @@ impl MenuConfig {
                                     map
                                 },
                                 when: None,
-                                checkbox: None,
+                                checkbox: Some(context_keys::KEYMAP_DEFAULT.to_string()),
                             },
                             MenuItem::Action {
                                 label: t!("menu.view.keybinding_emacs").to_string(),
@@ -2126,7 +2126,7 @@ impl MenuConfig {
                                     map
                                 },
                                 when: None,
-                                checkbox: None,
+                                checkbox: Some(context_keys::KEYMAP_EMACS.to_string()),
                             },
                             MenuItem::Action {
                                 label: t!("menu.view.keybinding_vscode").to_string(),
@@ -2137,7 +2137,7 @@ impl MenuConfig {
                                     map
                                 },
                                 when: None,
-                                checkbox: None,
+                                checkbox: Some(context_keys::KEYMAP_VSCODE.to_string()),
                             },
                             MenuItem::Action {
                                 label: "macOS GUI (⌘)".to_string(),
@@ -2148,7 +2148,7 @@ impl MenuConfig {
                                     map
                                 },
                                 when: None,
-                                checkbox: None,
+                                checkbox: Some(context_keys::KEYMAP_MACOS_GUI.to_string()),
                             },
                         ],
                     },
