@@ -12,235 +12,110 @@ use crate::common::harness::EditorTestHarness;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use fresh::server::input_parser::InputParser;
 
-/// Helper: parse raw bytes through InputParser, feed resulting key events into
-/// the editor (same code path as EditorServer), then return the buffer content.
-fn parse_and_apply(harness: &mut EditorTestHarness, parser: &mut InputParser, bytes: &[u8]) {
-    let events = parser.parse(bytes);
-    for event in events {
-        if let Event::Key(ke) = event {
-            harness
-                .send_key(ke.code, ke.modifiers)
-                .expect("send_key failed");
+/// Helper: assert that InputParser produces exactly one Key event matching the
+/// expected keycode and modifiers.
+fn assert_csi_u_parses(input: &[u8], expected_code: KeyCode, expected_mods: KeyModifiers) {
+    let mut parser = InputParser::new();
+    let events = parser.parse(input);
+    assert_eq!(
+        events.len(),
+        1,
+        "Input {:02x?}: expected 1 event, got {:?}",
+        input,
+        events
+    );
+    match &events[0] {
+        Event::Key(ke) => {
+            assert_eq!(ke.code, expected_code, "Input {:02x?}: wrong keycode", input);
+            assert_eq!(
+                ke.modifiers, expected_mods,
+                "Input {:02x?}: wrong modifiers",
+                input
+            );
         }
+        other => panic!("Input {:02x?}: expected Key event, got {:?}", input, other),
     }
 }
 
-// ---------------------------------------------------------------------------
-// Reproduction: CSI u sequences must NOT appear as literal text
-// ---------------------------------------------------------------------------
-
-/// \x1b[13;5u = Ctrl+Enter in CSI u format.
-/// Before the fix this inserted "[13;5u" as literal text.
+/// End-to-end: CSI u sequences fed through InputParser → Editor must not leak
+/// as literal text into the buffer. Covers Ctrl+Enter, Ctrl+Tab, Shift+Enter,
+/// and a plain key — the original issue report plus variants.
 #[test]
-fn test_csi_u_ctrl_enter_not_literal_text() {
+fn test_csi_u_sequences_not_inserted_as_literal_text() {
     let mut harness = EditorTestHarness::new(80, 24).unwrap();
     let mut parser = InputParser::new();
 
-    // Type "hello" then send Ctrl+Enter
-    parse_and_apply(&mut harness, &mut parser, b"hello");
-    parse_and_apply(&mut harness, &mut parser, b"\x1b[13;5u");
+    // Type some text, then send several CSI u sequences
+    let sequences: &[&[u8]] = &[
+        b"hello",
+        b"\x1b[13;5u", // Ctrl+Enter
+        b"\x1b[9;5u",  // Ctrl+Tab
+        b"\x1b[13;2u", // Shift+Enter
+        b"\x1b[97u",   // plain 'a'
+    ];
+    for seq in sequences {
+        for event in parser.parse(seq) {
+            if let Event::Key(ke) = event {
+                harness.send_key(ke.code, ke.modifiers).unwrap();
+            }
+        }
+    }
 
     let content = harness.get_buffer_content().unwrap_or_default();
-    assert!(
-        !content.contains("[13;5u"),
-        "CSI u sequence leaked as literal text: {:?}",
-        content
-    );
-}
-
-/// \x1b[9;5u = Ctrl+Tab in CSI u format.
-#[test]
-fn test_csi_u_ctrl_tab_not_literal_text() {
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
-    let mut parser = InputParser::new();
-
-    parse_and_apply(&mut harness, &mut parser, b"hello");
-    parse_and_apply(&mut harness, &mut parser, b"\x1b[9;5u");
-
-    let content = harness.get_buffer_content().unwrap_or_default();
-    assert!(
-        !content.contains("[9;5u"),
-        "CSI u sequence leaked as literal text: {:?}",
-        content
-    );
-}
-
-/// \x1b[13;2u = Shift+Enter in CSI u format.
-#[test]
-fn test_csi_u_shift_enter_not_literal_text() {
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
-    let mut parser = InputParser::new();
-
-    parse_and_apply(&mut harness, &mut parser, b"hello");
-    parse_and_apply(&mut harness, &mut parser, b"\x1b[13;2u");
-
-    let content = harness.get_buffer_content().unwrap_or_default();
-    assert!(
-        !content.contains("[13;2u"),
-        "CSI u sequence leaked as literal text: {:?}",
-        content
-    );
-}
-
-/// \x1b[97u = 'a' key with no modifiers in CSI u format (keycode 97 = 'a').
-#[test]
-fn test_csi_u_plain_key_not_literal_text() {
-    let mut harness = EditorTestHarness::new(80, 24).unwrap();
-    let mut parser = InputParser::new();
-
-    parse_and_apply(&mut harness, &mut parser, b"\x1b[97u");
-
-    let content = harness.get_buffer_content().unwrap_or_default();
-    assert!(
-        !content.contains("[97u"),
-        "CSI u sequence leaked as literal text: {:?}",
-        content
-    );
-}
-
-// ---------------------------------------------------------------------------
-// InputParser unit-level: CSI u sequences produce correct events
-// ---------------------------------------------------------------------------
-
-/// Verify that InputParser correctly parses \x1b[13;5u as Ctrl+Enter.
-#[test]
-fn test_input_parser_csi_u_ctrl_enter() {
-    let mut parser = InputParser::new();
-    let events = parser.parse(b"\x1b[13;5u");
-
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Enter, "Expected Enter keycode");
-            assert!(
-                ke.modifiers.contains(KeyModifiers::CONTROL),
-                "Expected Ctrl modifier, got {:?}",
-                ke.modifiers
-            );
-        }
-        other => panic!("Expected Key event, got {:?}", other),
+    for literal in &["[13;5u", "[9;5u", "[13;2u", "[97u"] {
+        assert!(
+            !content.contains(literal),
+            "CSI u sequence leaked as literal text {literal:?}: {content:?}",
+        );
     }
 }
 
-/// Verify \x1b[9;5u → Ctrl+Tab.
+/// InputParser must map CSI u sequences to the correct KeyCode and modifiers.
+/// Covers: special keycodes (Enter, Tab, Esc, Backspace, Space), printable
+/// chars, no-modifier and multi-modifier combinations.
 #[test]
-fn test_input_parser_csi_u_ctrl_tab() {
-    let mut parser = InputParser::new();
-    let events = parser.parse(b"\x1b[9;5u");
+fn test_input_parser_csi_u_keycodes_and_modifiers() {
+    // (raw bytes, expected KeyCode, expected KeyModifiers)
+    let cases: &[(&[u8], KeyCode, KeyModifiers)] = &[
+        (b"\x1b[13;5u", KeyCode::Enter, KeyModifiers::CONTROL),
+        (b"\x1b[9;5u", KeyCode::Tab, KeyModifiers::CONTROL),
+        (b"\x1b[27u", KeyCode::Esc, KeyModifiers::empty()),
+        (
+            b"\x1b[127;5u",
+            KeyCode::Backspace,
+            KeyModifiers::CONTROL,
+        ),
+        (b"\x1b[97u", KeyCode::Char('a'), KeyModifiers::empty()),
+        // modifier 4 → param-1 = 3 → shift(1) | alt(2)
+        (
+            b"\x1b[13;4u",
+            KeyCode::Enter,
+            KeyModifiers::SHIFT.union(KeyModifiers::ALT),
+        ),
+        (b"\x1b[13;2u", KeyCode::Enter, KeyModifiers::SHIFT),
+    ];
 
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Tab, "Expected Tab keycode");
-            assert!(
-                ke.modifiers.contains(KeyModifiers::CONTROL),
-                "Expected Ctrl modifier, got {:?}",
-                ke.modifiers
-            );
-        }
-        other => panic!("Expected Key event, got {:?}", other),
+    for &(input, code, mods) in cases {
+        assert_csi_u_parses(input, code, mods);
     }
 }
 
-/// Verify \x1b[97u → 'a' with no modifiers.
-#[test]
-fn test_input_parser_csi_u_plain_a() {
-    let mut parser = InputParser::new();
-    let events = parser.parse(b"\x1b[97u");
-
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Char('a'), "Expected 'a' keycode");
-            assert!(
-                ke.modifiers.is_empty(),
-                "Expected no modifiers, got {:?}",
-                ke.modifiers
-            );
-        }
-        other => panic!("Expected Key event, got {:?}", other),
-    }
-}
-
-/// Verify \x1b[127;5u → Ctrl+Backspace.
-#[test]
-fn test_input_parser_csi_u_ctrl_backspace() {
-    let mut parser = InputParser::new();
-    let events = parser.parse(b"\x1b[127;5u");
-
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Backspace, "Expected Backspace keycode");
-            assert!(
-                ke.modifiers.contains(KeyModifiers::CONTROL),
-                "Expected Ctrl modifier, got {:?}",
-                ke.modifiers
-            );
-        }
-        other => panic!("Expected Key event, got {:?}", other),
-    }
-}
-
-/// Verify \x1b[27u → Escape with no modifiers.
-#[test]
-fn test_input_parser_csi_u_escape() {
-    let mut parser = InputParser::new();
-    let events = parser.parse(b"\x1b[27u");
-
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Esc, "Expected Escape keycode");
-        }
-        other => panic!("Expected Key event, got {:?}", other),
-    }
-}
-
-/// Verify CSI u sequence split across parse chunks is handled correctly.
+/// CSI u sequence split across two parse() calls must still be recognised.
 #[test]
 fn test_input_parser_csi_u_split_across_chunks() {
     let mut parser = InputParser::new();
 
-    // First chunk: ESC [
+    // First chunk: incomplete
     let events = parser.parse(b"\x1b[13");
     assert!(events.is_empty(), "Incomplete CSI u should buffer");
 
-    // Second chunk: ;5u
+    // Second chunk completes the sequence
     let events = parser.parse(b";5u");
     assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
     match &events[0] {
         Event::Key(ke) => {
             assert_eq!(ke.code, KeyCode::Enter);
             assert!(ke.modifiers.contains(KeyModifiers::CONTROL));
-        }
-        other => panic!("Expected Key event, got {:?}", other),
-    }
-}
-
-/// Verify \x1b[13;4u → Alt+Ctrl+Enter (modifier 4 = 1+Alt+Ctrl = Shift+Ctrl,
-/// actually modifier 4 means 1 + 2(alt) + 0 = shift+alt... let me check).
-/// modifier encoding: value = 1 + (shift) + 2*(alt) + 4*(ctrl)
-/// So 4 = 1 + 0 + 0 + 4*(0) ... no, 4 = 1 + shift(1) + alt(2) = shift+alt
-/// Actually: modifier_param - 1 = bitmask, so 4 - 1 = 3 = shift(1) | alt(2)
-#[test]
-fn test_input_parser_csi_u_shift_alt_enter() {
-    let mut parser = InputParser::new();
-    // modifier 4 → param-1 = 3 → shift(1) | alt(2)
-    let events = parser.parse(b"\x1b[13;4u");
-
-    assert_eq!(events.len(), 1, "Expected 1 event, got: {:?}", events);
-    match &events[0] {
-        Event::Key(ke) => {
-            assert_eq!(ke.code, KeyCode::Enter);
-            assert!(
-                ke.modifiers.contains(KeyModifiers::SHIFT),
-                "Expected Shift modifier"
-            );
-            assert!(
-                ke.modifiers.contains(KeyModifiers::ALT),
-                "Expected Alt modifier"
-            );
         }
         other => panic!("Expected Key event, got {:?}", other),
     }
