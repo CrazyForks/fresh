@@ -3105,7 +3105,10 @@ where
         if needs_render && last_render.elapsed() >= FRAME_DURATION {
             {
                 let _span = tracing::info_span!("terminal_draw").entered();
+                use crossterm::ExecutableCommand;
+                stdout().execute(crossterm::terminal::BeginSynchronizedUpdate)?;
                 terminal.draw(|frame| editor.render(frame))?;
+                stdout().execute(crossterm::terminal::EndSynchronizedUpdate)?;
             }
             last_render = Instant::now();
             needs_render = false;
