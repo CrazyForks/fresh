@@ -1,6 +1,6 @@
 # Release Notes
 
-## 0.2.19
+## 0.2.20
 
 ### Features
 
