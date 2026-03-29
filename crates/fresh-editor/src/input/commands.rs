@@ -803,6 +803,20 @@ static COMMAND_DEFS: &[CommandDef] = &[
         custom_contexts: &[],
     },
     CommandDef {
+        name_key: "cmd.toggle_page_view",
+        desc_key: "cmd.toggle_page_view_desc",
+        action: || Action::TogglePageView,
+        contexts: &[Normal],
+        custom_contexts: &[],
+    },
+    CommandDef {
+        name_key: "cmd.set_page_width",
+        desc_key: "cmd.set_page_width_desc",
+        action: || Action::SetPageWidth,
+        contexts: &[Normal],
+        custom_contexts: &[],
+    },
+    CommandDef {
         name_key: "cmd.toggle_read_only",
         desc_key: "cmd.toggle_read_only_desc",
         action: || Action::ToggleReadOnly,
