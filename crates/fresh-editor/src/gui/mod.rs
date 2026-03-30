@@ -244,7 +244,7 @@ impl GuiApplication for EditorApp {
         }
     }
 
-    fn take_color_update(&mut self) -> Option<ratatui_wgpu::ColorTable> {
+    fn take_color_update(&mut self) -> Option<fresh_gui::ColorTable> {
         let current = &self.editor.theme().name;
         if *current == self.last_theme {
             return None;

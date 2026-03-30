@@ -23,7 +23,7 @@ use fresh_core::menu::{Menu, MenuContext};
 use ratatui::backend::Backend;
 use ratatui::style::Color;
 use ratatui::Terminal;
-use ratatui_wgpu::{Builder, ColorTable, Dimensions, Font, WgpuBackend};
+use ratatui_wgpu::{Builder, Dimensions, Font, WgpuBackend};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -176,6 +176,10 @@ impl Default for GuiConfig {
 ///
 /// Standard colors are brightened and light variants are vivid to ensure
 /// readability against dark editor backgrounds.
+// Re-export so consumers (e.g. fresh-editor/gui) can name the type
+// returned by `GuiApplication::take_color_update`.
+pub use ratatui_wgpu::ColorTable;
+
 pub fn dark_color_table() -> ColorTable {
     ColorTable {
         BLACK: [0, 0, 0],
