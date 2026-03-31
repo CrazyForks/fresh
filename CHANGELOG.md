@@ -1,5 +1,45 @@
 # Release Notes
 
+## 0.2.21
+
+### Features
+
+* **Fast Completions without LSP**: New basic completions providers without language server — buffer-word candidates appear below LSP results in the popup. Also, a new setting (config) controls auto-trigger vs explicit Ctrl+Space (default: explicit). Enter dismisses the popup (Tab accepts). I plan to further improve it (make it more intelligent) in future releases.
+
+* **Current Line Highlighting**: Highlights the cursor line. Enabled by default, togglable from the command palette and Settings UI (caveat: wrapped lines are currently highlighted in their entirety, this should probably be changed to visual lines).
+
+* **LSP Code Actions**: Code action modal now actually works! Select an action by number or up/down arrows and enter (#1405). Supports resolve, execute command, and server-initiated workspace edits (previously dropped silently). File create/rename/delete operations handled. Actions from multiple servers unified into one popup. Default keybinding changed to Alt+. - because Ctrl+. is filtered by many terminals.
+
+* **LSP Completion Resolve and Formatting**: Auto-imports applied on completion accept. Format Buffer falls back to LSP when no external formatter is configured. Also adds range formatting and pre-rename validation.
+
+* **LSP Server Selection for Restart/Stop**: Popup to choose which server to restart/stop individually, or all at once.
+
+* **Grammar Listing**: `fresh --cmd grammar list` and `editor.listGrammars()` plugin API show all available grammars with source and extensions. When specifying a grammar in a `languages` entry in the config, you must currently use a full name from this list - for example "Bourne Again Shell (bash)" rather than "bash". This will be improved once I add grammar aliases.
+
+### Improvements
+
+* **Theme Contrast**: Replaced all named ANSI colors with explicit RGB in built-in themes for deterministic rendering. Improved contrast ratios across both high-contrast and light themes. Diagnostic and semantic overlays now re-apply correctly on theme change, including during live preview.
+
+* **Git Status Marker Refresh**: File explorer markers update on terminal focus gain and by polling for git index changes (#1431).
+
+* **Config-Only Languages**: Custom languages without a built-in grammar (e.g., "fish") appear in the Set Language popup and are detected correctly — no more fallthrough to wrong built-in grammars.
+
+* **Theme Inspector**: Records exact theme keys during rendering instead of reverse-mapping via heuristics. Theme editor Save As improved for built-in themes.
+
+* **LSP Reliability**: Diagnostics cleared on server stop/crash, buffers re-opened on server start, document version checking for workspace edits, LSP notified after undo/redo of bulk edits, pending requests drained on server death to prevent deadlocks, hover suppressed while popups are visible.
+
+### Vim Mode
+
+22 bug fixes: C/D/S/cc, e motion, nG, h/l line clamping, ^, $, J with space, f/t special chars, r replace, ~ toggle case, visual mode entry/switching, count display. Key motions moved from async plugin commands to native Rust actions, eliminating race conditions.
+
+If you use the Vim plugin please drop a note at https://github.com/sinelaw/fresh/discussions/417 - I need feedback on this feature.
+
+### Bug Fixes
+
+* Fixed Ctrl+W panic on accented/multi-byte characters (#1332).
+
+* Fixed LSP diagnostics from stopped servers reappearing from queued messages.
+
 ## 0.2.20
 
 ### Features
