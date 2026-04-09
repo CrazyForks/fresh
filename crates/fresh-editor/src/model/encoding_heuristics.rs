@@ -72,6 +72,67 @@ pub fn has_windows1250_pattern(sample: &[u8]) -> bool {
     false
 }
 
+/// Check if sample has Windows-1251 (Cyrillic) specific byte patterns
+///
+/// Windows-1251 maps bytes 0xC0-0xDF to Cyrillic uppercase letters (А-Я) and
+/// bytes 0xE0-0xFF to Cyrillic lowercase letters (а-я). In Windows-1252 the
+/// same ranges are accented Latin uppercase (À-ß) and lowercase (à-ÿ).
+///
+/// Distinguishing Windows-1251 from Windows-1252 is hard when chardetng is
+/// not confident, because both encodings use the same byte ranges for very
+/// different character sets. This heuristic intentionally only fires when
+/// there is strong evidence of Cyrillic text:
+///
+/// 1. The sample contains **both** a Cyrillic uppercase letter (0xC0-0xDE)
+///    **and** a Cyrillic lowercase letter (0xE0-0xFF). In Latin-1 text, runs
+///    of accented uppercase letters are extremely rare, so mixing uppercase
+///    and lowercase high bytes is a strong Cyrillic signal. Note: 0xDF is
+///    excluded from the "uppercase" test because it decodes to ß (sharp s,
+///    lowercase) in Latin-1 / Windows-1252.
+/// 2. The sample contains Ё (0xA8) or ё (0xB8) with at least one Cyrillic
+///    lowercase letter. These bytes decode to ¨ / ¸ in Windows-1252 which
+///    almost never appear next to other high bytes in real text.
+///
+/// # Returns
+///
+/// `true` if the sample contains patterns that strongly indicate Windows-1251.
+pub fn has_windows1251_pattern(sample: &[u8]) -> bool {
+    let mut has_cyrillic_upper = false; // 0xC0-0xDE (А-Ю in Windows-1251)
+    let mut has_cyrillic_lower = false; // 0xE0-0xFF (а-я in Windows-1251)
+    let mut has_yo = false; // 0xA8 (Ё) or 0xB8 (ё)
+
+    for &byte in sample {
+        // 0xDF excluded: it is ß in Latin-1/Windows-1252, a common lowercase
+        // letter in German, so we don't treat it as a Cyrillic-upper signal.
+        if (0xC0..=0xDE).contains(&byte) {
+            has_cyrillic_upper = true;
+        }
+        if (0xE0..=0xFF).contains(&byte) {
+            has_cyrillic_lower = true;
+        }
+        if byte == 0xA8 || byte == 0xB8 {
+            has_yo = true;
+        }
+    }
+
+    // Strong signal: mix of uppercase and lowercase Cyrillic. Real Russian
+    // text almost always contains both cases (sentence starts, proper nouns),
+    // while Latin-1 text of the form "Café résumé" only uses lowercase
+    // accented letters.
+    if has_cyrillic_upper && has_cyrillic_lower {
+        return true;
+    }
+
+    // Ё / ё plus a lowercase Cyrillic letter is also a strong Cyrillic signal
+    // since these Windows-1252 characters (¨ and ¸) almost never cluster with
+    // other high bytes in real text.
+    if has_yo && has_cyrillic_lower {
+        return true;
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +232,100 @@ mod tests {
         assert!(
             !has_windows1250_pattern(&french),
             "French text should not trigger Windows-1250"
+        );
+    }
+
+    #[test]
+    fn test_windows1251_upper_and_lower() {
+        // Russian word "Привет" (Hello) in Windows-1251 mixes uppercase
+        // П (0xCF, in 0xC0-0xDE) with lowercase ривет (0xF0 0xE8 0xE2 0xE5 0xF2,
+        // in 0xE0-0xFF). This upper+lower combination is the strong signal.
+        let privet: &[u8] = &[0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2];
+        assert!(
+            has_windows1251_pattern(privet),
+            "Cyrillic upper + lower should trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_windows1251_with_yo() {
+        // ё (0xB8) appearing with lowercase Cyrillic letters is a strong indicator.
+        // "ёжик" (little hedgehog): ё=0xB8 ж=0xE6 и=0xE8 к=0xEA
+        // 0xB8 itself is outside the letter ranges, but the ж/и/к are lowercase
+        // Cyrillic. has_yo && has_cyrillic_lower triggers the heuristic.
+        let yozhik: &[u8] = &[0xB8, 0xE6, 0xE8, 0xEA];
+        assert!(
+            has_windows1251_pattern(yozhik),
+            "ё + lowercase Cyrillic letters should trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_windows1251_sentence_with_spaces() {
+        // "Привет мир" (Hello world) in Windows-1251
+        let hello_world: &[u8] = &[
+            0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, // Привет
+            0x20, // space
+            0xEC, 0xE8, 0xF0, // мир
+        ];
+        assert!(
+            has_windows1251_pattern(hello_world),
+            "Russian sentence should trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_not_windows1251_french() {
+        // "Café résumé" — only lowercase high bytes (0xE9), no Ё/ё.
+        let french = [
+            0x43, 0x61, 0x66, 0xE9, 0x20, // "Café "
+            0x72, 0xE9, 0x73, 0x75, 0x6D, 0xE9, // "résumé"
+        ];
+        assert!(
+            !has_windows1251_pattern(&french),
+            "French text should not trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_not_windows1251_ascii() {
+        let ascii = b"Hello, World!";
+        assert!(
+            !has_windows1251_pattern(ascii),
+            "Pure ASCII should not trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_not_windows1251_lowercase_only_latin1() {
+        // Latin-1 text with runs of lowercase accented letters must NOT trigger
+        // Windows-1251 — this is what prop_latin1_text_preserved generates.
+        // "ééééé" (5 é's) has no uppercase signal, so the heuristic rejects it.
+        let only_lower = [0xE9, 0xE9, 0xE9, 0xE9, 0xE9];
+        assert!(
+            !has_windows1251_pattern(&only_lower),
+            "Runs of lowercase Latin-1 letters should NOT trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_not_windows1251_ambiguous_polish() {
+        // Polish "żółć" (4 lowercase high bytes) must NOT trigger Windows-1251.
+        let zolc = [0xBF, 0xF3, 0xB3, 0xE6];
+        assert!(
+            !has_windows1251_pattern(&zolc),
+            "Lowercase-only Polish bytes should NOT trigger Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_not_windows1251_sharp_s_excluded() {
+        // ß (0xDF) must not count as "Cyrillic upper" because it is a common
+        // German lowercase letter in Latin-1 / Windows-1252.
+        let german = [0x53, 0x74, 0x72, 0x61, 0xDF, 0x65]; // "Straße"
+        assert!(
+            !has_windows1251_pattern(&german),
+            "German ß should not trigger Windows-1251"
         );
     }
 

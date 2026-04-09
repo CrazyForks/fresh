@@ -14,7 +14,7 @@
 //! 5. **Statistical Detection**: Use chardetng for legacy encoding detection
 //! 6. **Fallback**: Default to Windows-1252 for ambiguous cases
 
-use super::encoding_heuristics::has_windows1250_pattern;
+use super::encoding_heuristics::{has_windows1250_pattern, has_windows1251_pattern};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +46,8 @@ pub enum Encoding {
     Windows1252,
     /// Windows-1250 / CP-1250 (Windows Central European)
     Windows1250,
+    /// Windows-1251 / CP-1251 (Windows Cyrillic)
+    Windows1251,
     /// GB18030 (Chinese, superset of GBK)
     Gb18030,
     /// GBK (Chinese Simplified, subset of GB18030)
@@ -68,6 +70,7 @@ impl Encoding {
             Self::Latin1 => "Latin-1",
             Self::Windows1252 => "Windows-1252",
             Self::Windows1250 => "Windows-1250",
+            Self::Windows1251 => "Windows-1251",
             Self::Gb18030 => "GB18030",
             Self::Gbk => "GBK",
             Self::ShiftJis => "Shift-JIS",
@@ -86,6 +89,7 @@ impl Encoding {
             Self::Latin1 => "ISO-8859-1 / Latin-1 – Western European",
             Self::Windows1252 => "Windows-1252 / CP1252 – Western European",
             Self::Windows1250 => "Windows-1250 / CP1250 – Central European",
+            Self::Windows1251 => "Windows-1251 / CP1251 – Cyrillic",
             Self::Gb18030 => "GB18030 – Chinese",
             Self::Gbk => "GBK / CP936 – Simplified Chinese",
             Self::ShiftJis => "Shift_JIS – Japanese",
@@ -102,6 +106,7 @@ impl Encoding {
             Self::Latin1 => encoding_rs::WINDOWS_1252, // ISO-8859-1 maps to Windows-1252 per WHATWG
             Self::Windows1252 => encoding_rs::WINDOWS_1252,
             Self::Windows1250 => encoding_rs::WINDOWS_1250,
+            Self::Windows1251 => encoding_rs::WINDOWS_1251,
             Self::Gb18030 => encoding_rs::GB18030,
             Self::Gbk => encoding_rs::GBK,
             Self::ShiftJis => encoding_rs::SHIFT_JIS,
@@ -135,6 +140,7 @@ impl Encoding {
             Self::Latin1,
             Self::Windows1252,
             Self::Windows1250,
+            Self::Windows1251,
             Self::Gb18030,
             Self::Gbk,
             Self::ShiftJis,
@@ -159,7 +165,11 @@ impl Encoding {
     pub fn is_resynchronizable(&self) -> bool {
         match self {
             // Fixed-width single byte - every byte is a character
-            Self::Ascii | Self::Latin1 | Self::Windows1252 | Self::Windows1250 => true,
+            Self::Ascii
+            | Self::Latin1
+            | Self::Windows1252
+            | Self::Windows1250
+            | Self::Windows1251 => true,
 
             // UTF-8 has unique bit patterns for lead vs continuation bytes
             Self::Utf8 | Self::Utf8Bom => true,
@@ -181,7 +191,11 @@ impl Encoding {
     pub fn alignment(&self) -> Option<usize> {
         match self {
             // Single-byte encodings - no alignment needed
-            Self::Ascii | Self::Latin1 | Self::Windows1252 | Self::Windows1250 => Some(1),
+            Self::Ascii
+            | Self::Latin1
+            | Self::Windows1252
+            | Self::Windows1250
+            | Self::Windows1251 => Some(1),
 
             // UTF-8 - no alignment needed (self-synchronizing)
             Self::Utf8 | Self::Utf8Bom => Some(1),
@@ -380,28 +394,38 @@ pub fn detect_encoding_or_binary(bytes: &[u8], truncated: bool) -> (Encoding, bo
                 Encoding::ShiftJis
             } else if detected_encoding == encoding_rs::EUC_KR {
                 Encoding::EucKr
-            } else if detected_encoding == encoding_rs::WINDOWS_1252
+            } else if detected_encoding == encoding_rs::WINDOWS_1251
+                || detected_encoding == encoding_rs::WINDOWS_1252
                 || detected_encoding == encoding_rs::WINDOWS_1250
             {
-                // chardetng often returns Windows-1252 for Central European text
-                // Check for Windows-1250 specific patterns
+                // chardetng can't reliably distinguish Latin-1 from Cyrillic for
+                // short samples with ambiguous high bytes — a run like "éééÿ"
+                // (Latin-1) has the same bytes as "еёёя" (Cyrillic) and chardetng
+                // may confidently pick either. Route through the heuristic and
+                // default to Windows-1252 unless there is strong evidence.
                 if has_windows1250_pattern(sample) {
                     Encoding::Windows1250
+                } else if has_windows1251_pattern(sample) {
+                    Encoding::Windows1251
                 } else {
                     Encoding::Windows1252
                 }
             } else if detected_encoding == encoding_rs::UTF_8 {
                 // chardetng thinks it's UTF-8, but validation failed above
-                // Could still be Windows-1250 if it has Central European patterns
+                // Could still be Windows-1250/1251 if it has legacy patterns
                 if has_windows1250_pattern(sample) {
                     Encoding::Windows1250
+                } else if has_windows1251_pattern(sample) {
+                    Encoding::Windows1251
                 } else {
                     Encoding::Windows1252
                 }
             } else {
-                // Unknown encoding - check for Windows-1250 patterns
+                // Unknown encoding - check for Windows-1250/1251 patterns
                 if has_windows1250_pattern(sample) {
                     Encoding::Windows1250
+                } else if has_windows1251_pattern(sample) {
+                    Encoding::Windows1251
                 } else {
                     Encoding::Windows1252
                 }
@@ -409,10 +433,12 @@ pub fn detect_encoding_or_binary(bytes: &[u8], truncated: bool) -> (Encoding, bo
         return (encoding, false);
     }
 
-    // 7. chardetng not confident, but no binary indicators - check for Windows-1250 patterns
+    // 7. chardetng not confident, but no binary indicators - check for Windows-1250/1251 patterns
     // We already checked for binary control chars earlier, so this is valid text
     if has_windows1250_pattern(sample) {
         (Encoding::Windows1250, false)
+    } else if has_windows1251_pattern(sample) {
+        (Encoding::Windows1251, false)
     } else {
         (Encoding::Windows1252, false)
     }
@@ -914,6 +940,92 @@ mod tests {
             detect_encoding(&windows1252_text),
             Encoding::Windows1252,
             "French text should remain Windows-1252"
+        );
+    }
+
+    #[test]
+    fn test_convert_roundtrip_windows1251() {
+        // Russian "Привет" (Hello) in Windows-1251:
+        // П=0xCF р=0xF0 и=0xE8 в=0xE2 е=0xE5 т=0xF2
+        let windows1251_bytes: &[u8] = &[0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2];
+
+        // Convert to UTF-8
+        let enc_rs = Encoding::Windows1251.to_encoding_rs();
+        let (decoded, _had_errors) = enc_rs.decode_without_bom_handling(windows1251_bytes);
+        let utf8_content = decoded.as_bytes();
+
+        let utf8_str = std::str::from_utf8(utf8_content).unwrap();
+        assert_eq!(utf8_str, "Привет", "Should decode to Russian 'Привет'");
+
+        // Convert back to Windows-1251
+        let back = convert_from_utf8(utf8_content, Encoding::Windows1251);
+        assert_eq!(back, windows1251_bytes, "Round-trip should preserve bytes");
+    }
+
+    #[test]
+    fn test_windows1251_display_and_description() {
+        assert_eq!(Encoding::Windows1251.display_name(), "Windows-1251");
+        assert_eq!(
+            Encoding::Windows1251.description(),
+            "Windows-1251 / CP1251 – Cyrillic"
+        );
+    }
+
+    #[test]
+    fn test_windows1251_is_resynchronizable() {
+        assert!(Encoding::Windows1251.is_resynchronizable());
+        assert_eq!(Encoding::Windows1251.alignment(), Some(1));
+        assert!(!Encoding::Windows1251.requires_full_file_load());
+        assert!(!Encoding::Windows1251.has_bom());
+    }
+
+    #[test]
+    fn test_detect_windows1251_russian() {
+        // Russian sentence "Привет мир" (Hello world) in Windows-1251
+        let privet_mir: &[u8] = &[
+            0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, // Привет
+            0x20, // space
+            0xEC, 0xE8, 0xF0, // мир
+        ];
+        assert_eq!(
+            detect_encoding(privet_mir),
+            Encoding::Windows1251,
+            "Russian sentence should be detected as Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_detect_windows1251_russian_pangram() {
+        // Russian pangram fragment: "Съешь ещё этих мягких французских булок"
+        // Contains many Cyrillic letters and the distinctive ё (0xB8) character.
+        // bytes in Windows-1251:
+        // С=0xD1 ъ=0xFA е=0xE5 ш=0xF8 ь=0xFC 0x20
+        // е=0xE5 щ=0xF9 ё=0xB8 0x20
+        // э=0xFD т=0xF2 и=0xE8 х=0xF5 0x20
+        // м=0xEC я=0xFF г=0xE3 к=0xEA и=0xE8 х=0xF5 0x20
+        // ф=0xF4 р=0xF0 а=0xE0 н=0xED ц=0xF6 у=0xF3 з=0xE7 с=0xF1 к=0xEA и=0xE8 х=0xF5 0x20
+        // б=0xE1 у=0xF3 л=0xEB о=0xEE к=0xEA
+        let pangram: &[u8] = &[
+            0xD1, 0xFA, 0xE5, 0xF8, 0xFC, 0x20, 0xE5, 0xF9, 0xB8, 0x20, 0xFD, 0xF2, 0xE8, 0xF5,
+            0x20, 0xEC, 0xFF, 0xE3, 0xEA, 0xE8, 0xF5, 0x20, 0xF4, 0xF0, 0xE0, 0xED, 0xF6, 0xF3,
+            0xE7, 0xF1, 0xEA, 0xE8, 0xF5, 0x20, 0xE1, 0xF3, 0xEB, 0xEE, 0xEA,
+        ];
+        assert_eq!(
+            detect_encoding(pangram),
+            Encoding::Windows1251,
+            "Russian pangram should be detected as Windows-1251"
+        );
+    }
+
+    #[test]
+    fn test_detect_not_windows1251_ambiguous_polish() {
+        // Regression: 4 consecutive Polish ambiguous bytes must still default
+        // to Windows-1252, not be mis-detected as Cyrillic by the 1251 heuristic.
+        let zolc = [0xBF, 0xF3, 0xB3, 0xE6];
+        assert_eq!(
+            detect_encoding(&zolc),
+            Encoding::Windows1252,
+            "Short ambiguous Polish bytes must not be detected as Windows-1251"
         );
     }
 

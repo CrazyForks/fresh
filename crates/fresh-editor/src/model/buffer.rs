@@ -6226,6 +6226,8 @@ mod tests {
             assert!(!Encoding::Ascii.requires_full_file_load());
             assert!(!Encoding::Latin1.requires_full_file_load());
             assert!(!Encoding::Windows1252.requires_full_file_load());
+            assert!(!Encoding::Windows1250.requires_full_file_load());
+            assert!(!Encoding::Windows1251.requires_full_file_load());
             assert!(!Encoding::Utf16Le.requires_full_file_load());
             assert!(!Encoding::Utf16Be.requires_full_file_load());
 

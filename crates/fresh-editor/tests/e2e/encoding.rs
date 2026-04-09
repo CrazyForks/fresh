@@ -8,6 +8,8 @@
 //! - ASCII
 //! - Latin-1 (ISO-8859-1)
 //! - Windows-1252 (ANSI)
+//! - Windows-1250 (Central European)
+//! - Windows-1251 (Cyrillic)
 //! - GB18030 (Chinese)
 //! - GBK (Chinese simplified)
 
@@ -1489,6 +1491,157 @@ fn test_windows1250_czech_pangram() {
     );
 }
 
+// ============================================================================
+// Windows-1251 (Cyrillic) Encoding Tests
+// ============================================================================
+
+/// Test for Windows-1251 encoding support (issue #1453):
+/// - Load a Windows-1251 encoded Russian file from disk
+/// - Verify it is detected as Windows-1251
+/// - Verify the Cyrillic text is displayed correctly
+/// - Verify the encoding selector lists Windows-1251 with the right description
+#[test]
+fn test_windows1251_cyrillic_display_and_selector() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // "Привет мир" (Hello world) in Windows-1251:
+    // П=0xCF р=0xF0 и=0xE8 в=0xE2 е=0xE5 т=0xF2 space м=0xEC и=0xE8 р=0xF0
+    let russian_file = temp_dir.path().join("russian.txt");
+    let windows1251_bytes: &[u8] = &[
+        0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, 0x20, // "Привет "
+        0xEC, 0xE8, 0xF0, 0x0A, // "мир\n"
+    ];
+    std::fs::write(&russian_file, windows1251_bytes).unwrap();
+
+    let mut harness = EditorTestHarness::new(100, 24).unwrap();
+    harness.open_file(&russian_file).unwrap();
+    harness.render().unwrap();
+
+    // File should be detected as Windows-1251 (Russian letters form a clear
+    // 6-byte Cyrillic run that matches either chardetng or our heuristic).
+    let screen = harness.screen_to_string();
+    assert!(
+        screen.contains("Windows-1251"),
+        "Should detect as Windows-1251. Screen:\n{}",
+        screen
+    );
+
+    // Verify Cyrillic characters are displayed (converted to UTF-8 internally)
+    assert!(screen.contains('П'), "Screen should contain 'П'");
+    assert!(screen.contains('р'), "Screen should contain 'р'");
+    assert!(screen.contains('и'), "Screen should contain 'и'");
+    assert!(screen.contains('в'), "Screen should contain 'в'");
+    assert!(screen.contains('е'), "Screen should contain 'е'");
+    assert!(screen.contains('т'), "Screen should contain 'т'");
+    assert!(screen.contains('м'), "Screen should contain 'м'");
+
+    // Verify the encoding selector lists Windows-1251 with the Cyrillic description
+    let (col, row) = harness
+        .find_text_on_screen("Windows-1251")
+        .expect("Encoding indicator should be visible");
+    harness.mouse_click(col, row).unwrap();
+    harness.assert_screen_contains("Encoding:");
+
+    harness
+        .send_key(KeyCode::Char('a'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.type_text("1251").unwrap();
+    harness.render().unwrap();
+
+    let screen = harness.screen_to_string();
+    assert!(
+        screen.contains("Windows-1251") && screen.contains("Cyrillic"),
+        "Selector should show Windows-1251 / CP1251 – Cyrillic. Screen:\n{}",
+        screen
+    );
+}
+
+/// Test Windows-1251 encoding conversions:
+/// - Load a UTF-8 Russian file
+/// - Switch to Windows-1251 and save
+/// - Verify bytes on disk are Windows-1251 encoded
+/// - Round-trip back to UTF-8 preserves the text
+#[test]
+fn test_windows1251_encoding_conversions() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir.path().join("conversion_test.txt");
+
+    // Start with UTF-8 file containing Russian text
+    std::fs::write(&file_path, "Привет мир\n").unwrap();
+
+    let mut harness = EditorTestHarness::new(100, 24).unwrap();
+    harness.open_file(&file_path).unwrap();
+    harness.render().unwrap();
+
+    // Change encoding to Windows-1251 and save
+    let (col, row) = harness
+        .find_text_on_screen("UTF-8")
+        .expect("UTF-8 indicator should be visible");
+    harness.mouse_click(col, row).unwrap();
+    harness
+        .send_key(KeyCode::Char('a'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.type_text("Windows-1251").unwrap();
+    harness.render().unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Char('s'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+    let _ = harness.wait_until(|h| !h.editor().active_state().buffer.is_modified());
+
+    // Verify file is Windows-1251 encoded by decoding it back
+    let saved = std::fs::read(&file_path).unwrap();
+    // 'П' = 0xCF, 'р' = 0xF0 in Windows-1251 (not in the UTF-8 byte sequence 'П'
+    // which is 0xD0 0x9F)
+    assert!(
+        saved.contains(&0xCF) && saved.contains(&0xF0),
+        "File should be Windows-1251 encoded. Got: {:?}",
+        saved
+    );
+    let (decoded, _) = encoding_rs::WINDOWS_1251.decode_without_bom_handling(&saved);
+    assert!(
+        decoded.contains("Привет мир"),
+        "Should preserve Russian text. Got: {}",
+        decoded
+    );
+
+    // Part 2: Fresh load Windows-1251 from disk → UTF-8 → save
+    drop(harness);
+    let mut harness = EditorTestHarness::new(100, 24).unwrap();
+    harness.open_file(&file_path).unwrap();
+    harness.render().unwrap();
+
+    let (col, row) = harness
+        .find_text_on_screen("Windows-1251")
+        .expect("Windows-1251 indicator should be visible");
+    harness.mouse_click(col, row).unwrap();
+    harness
+        .send_key(KeyCode::Char('a'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.type_text("UTF-8").unwrap();
+    harness.render().unwrap();
+    harness
+        .send_key(KeyCode::Enter, KeyModifiers::NONE)
+        .unwrap();
+    harness
+        .send_key(KeyCode::Char('s'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness.render().unwrap();
+    let _ = harness.wait_until(|h| !h.editor().active_state().buffer.is_modified());
+
+    // Verify file is now valid UTF-8 and still contains the Russian text
+    let saved = std::fs::read(&file_path).unwrap();
+    let utf8_str = std::str::from_utf8(&saved).expect("File should be valid UTF-8");
+    assert!(
+        utf8_str.contains("Привет мир"),
+        "UTF-8 file should contain the Russian text. Got: {}",
+        utf8_str
+    );
+}
+
 /// Test loading files in various encodings from disk and saving as UTF-8
 /// This tests the full flow: create encoded file → load → save as UTF-8 → verify
 /// Covers all supported encodings with detectable content.
@@ -1543,6 +1696,12 @@ fn test_all_encodings_load_and_save_as_utf8() {
             desc: "Windows-1250",
             bytes: &[0xF3, 0xB3, 0xE6, 0x0A],
             expected_substr: "ó",
+        },
+        // Windows-1251: Russian "Привет" (П=0xCF р=0xF0 и=0xE8 в=0xE2 е=0xE5 т=0xF2)
+        TestCase {
+            desc: "Windows-1251",
+            bytes: &[0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, 0x0A],
+            expected_substr: "Привет",
         },
         // Note: CJK encodings (GB18030, GBK, Shift-JIS, EUC-KR) have ambiguous
         // detection - the same bytes can be valid in multiple encodings.

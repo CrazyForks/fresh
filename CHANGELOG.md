@@ -28,6 +28,8 @@
 
 * **Theme Fixes**: Fixed low contrast in Nord, Solarized Dark, Light, and Dracula themes. Fixed command palette selected row using wrong foreground color. Syntax highlighting colors are now preserved in text selections.
 
+* **Windows-1251 Encoding**: Added support for Windows-1251 (Cyrillic) encoding for loading and saving Russian and other Slavic language files (#1453). Available in the encoding selector; auto-detected for text mixing uppercase and lowercase Cyrillic letters.
+
 ### Bug Fixes
 
 * Fixed out-of-memory crash caused by an infinite loop in the line-wrapping transform when indentation exceeds half the available width (#1454).

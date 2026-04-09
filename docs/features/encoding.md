@@ -15,7 +15,7 @@ The in-memory encoding is always UTF-8. Files are converted to UTF-8 when loaded
 - **UTF-8** (default)
 - **UTF-16 LE/BE** (with BOM detection)
 - **Latin-1** (ISO-8859-1)
-- **Windows-1252**, **Windows-1250**
+- **Windows-1252**, **Windows-1250**, **Windows-1251**
 - **GBK**, **GB18030** (Chinese)
 - **Shift-JIS** (Japanese)
 - **EUC-KR** (Korean)
