@@ -359,3 +359,173 @@ fn test_universal_server_respects_auto_start_flag() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Create a fake LSP script that appends its PID to a shared spawn log on
+/// startup, so callers can count how many processes were launched.
+fn create_counting_server_script(dir: &std::path::Path, filename: &str) -> std::path::PathBuf {
+    let script = r##"#!/bin/bash
+SPAWN_LOG="$1"
+echo "$$" >> "$SPAWN_LOG"
+
+read_message() {
+    local content_length=0
+    while IFS=: read -r key value; do
+        key=$(echo "$key" | tr -d '\r\n')
+        value=$(echo "$value" | tr -d '\r\n ')
+        if [ "$key" = "Content-Length" ]; then
+            content_length=$value
+        fi
+        if [ -z "$key" ]; then
+            break
+        fi
+    done
+    if [ $content_length -gt 0 ]; then
+        dd bs=1 count=$content_length 2>/dev/null
+    fi
+}
+
+send_message() {
+    local message="$1"
+    local length=${#message}
+    printf "Content-Length: $length\r\n\r\n%s" "$message"
+}
+
+while true; do
+    msg=$(read_message)
+    if [ -z "$msg" ]; then break; fi
+    method=$(echo "$msg" | grep -o '"method":"[^"]*"' | cut -d'"' -f4)
+    msg_id=$(echo "$msg" | grep -o '"id":[0-9]*' | cut -d':' -f2)
+
+    case "$method" in
+        "initialize")
+            send_message '{"jsonrpc":"2.0","id":'"$msg_id"',"result":{"capabilities":{"positionEncoding":"utf-16","textDocumentSync":{"openClose":true,"change":2,"save":{}}}}}'
+            ;;
+        "initialized")
+            ;;
+        "textDocument/didOpen")
+            ;;
+        "shutdown")
+            send_message '{"jsonrpc":"2.0","id":'"$msg_id"',"result":null}'
+            break
+            ;;
+        *)
+            if [ -n "$method" ] && [ -n "$msg_id" ]; then
+                send_message '{"jsonrpc":"2.0","id":'"$msg_id"',"result":null}'
+            fi
+            ;;
+    esac
+done
+"##;
+
+    let script_path = dir.join(filename);
+    std::fs::write(&script_path, script).expect("Failed to write server script");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("Failed to get script metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("Failed to set script permissions");
+    }
+
+    script_path
+}
+
+/// A universal LSP server (enabled=true, auto_start=true) must be spawned
+/// only once per project, even when files of multiple languages are opened.
+///
+/// The current architecture appends the universal config to every configured
+/// language's server list. When files of different languages are opened,
+/// each language spawns its own instance of the universal server — resulting
+/// in multiple processes for what should be a single server.
+///
+/// This test opens a Rust file and a TOML file, with a universal LSP
+/// configured. It asserts only one universal LSP process is spawned.
+#[test]
+#[cfg_attr(target_os = "windows", ignore)]
+fn test_universal_lsp_spawned_once_across_languages() -> anyhow::Result<()> {
+    crate::common::tracing::init_tracing_from_env();
+
+    let temp_dir = tempfile::tempdir()?;
+    let script = create_counting_server_script(temp_dir.path(), "fake_universal_counter.sh");
+    let spawn_log = temp_dir.path().join("spawn_count.log");
+
+    let rust_file = temp_dir.path().join("test.rs");
+    std::fs::write(&rust_file, "fn main() {}\n")?;
+
+    let toml_file = temp_dir.path().join("test.toml");
+    std::fs::write(&toml_file, "[package]\nname = \"test\"\n")?;
+
+    let mut config = fresh::config::Config::default();
+
+    // Disable per-language servers so only the universal server is relevant
+    config.lsp.insert(
+        "rust".to_string(),
+        fresh::types::LspLanguageConfig::Multi(vec![fresh::services::lsp::LspServerConfig {
+            command: "rust-analyzer".to_string(),
+            enabled: false,
+            ..Default::default()
+        }]),
+    );
+    config.lsp.insert(
+        "toml".to_string(),
+        fresh::types::LspLanguageConfig::Multi(vec![fresh::services::lsp::LspServerConfig {
+            command: "taplo".to_string(),
+            enabled: false,
+            ..Default::default()
+        }]),
+    );
+
+    // Universal server: enabled + auto_start → should spawn exactly once
+    config.universal_lsp.insert(
+        "test-universal".to_string(),
+        fresh::types::LspLanguageConfig::Multi(vec![fresh::services::lsp::LspServerConfig {
+            command: script.to_string_lossy().to_string(),
+            args: vec![spawn_log.to_string_lossy().to_string()],
+            enabled: true,
+            auto_start: true,
+            name: Some("TestUniversal".to_string()),
+            ..Default::default()
+        }]),
+    );
+
+    let mut harness = EditorTestHarness::with_config_and_working_dir(
+        200,
+        30,
+        config,
+        temp_dir.path().to_path_buf(),
+    )?;
+
+    // Open both files
+    harness.open_file(&rust_file)?;
+    harness.render()?;
+    harness.open_file(&toml_file)?;
+    harness.render()?;
+
+    // Let LSP processes start
+    for _ in 0..20 {
+        harness.process_async_and_render()?;
+    }
+
+    // Wait for at least one spawn
+    harness.wait_until(|_| spawn_log.exists())?;
+
+    // Give a moment for any additional (buggy) spawns to register
+    for _ in 0..10 {
+        harness.process_async_and_render()?;
+    }
+
+    let log_content = std::fs::read_to_string(&spawn_log)?;
+    let spawn_count = log_content.lines().filter(|l| !l.is_empty()).count();
+
+    assert_eq!(
+        spawn_count, 1,
+        "Universal LSP should be spawned exactly once across all languages, \
+         but was spawned {} times. PIDs: {}",
+        spawn_count, log_content.trim()
+    );
+
+    Ok(())
+}
