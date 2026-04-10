@@ -22,6 +22,8 @@
 
 * Fixed LSP `auto_start` being ignored on a per-server basis when multiple servers are configured for one language — opening a file no longer drags in every enabled server, only those individually marked `auto_start`.
 
+* Fixed mouse input issue - mouse state not being restored in the terminal - after leaving Fresh (Windows only, #1530).
+
 ## 0.2.22
 
 ### Features
