@@ -1,5 +1,25 @@
 # Release Notes
 
+## 0.2.25
+
+### Improvements
+
+* **PageUp/PageDown in wrapped buffers**: Page motion is now view-row-aware, so paging through heavily wrapped text no longer stalls mid-buffer and the cursor stays visible after every press. Each page also keeps 3 rows of overlap with the previous page (matching vim / less) so you don't lose context across the jump.
+
+* **Smarter char-wrapping of long tokens**: When a token has to be split mid-word because it doesn't fit on a fresh line, the break now prefers a UAX #29 word boundary within a lookback window instead of an arbitrary grapheme position — e.g. `dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener` now wraps after `BUTTON_NEUTRAL` rather than mid-identifier.
+
+### Bug Fixes
+
+* Fixed language detection for extensionless files (#1598, #1607): files like `test` with a `#!/usr/bin/zsh` shebang, or extensionless bash scripts with `#!/bin/bash`, now detect the language from the shebang instead of falling through to plain text — restoring 0.2.23 behaviour.
+
+* Fixed missing characters and blank first rows when wrapping indented lines (#1597) — e.g. the `:` between `with` and ` a` in `someObject.doSomething(with: a, and: b)` was being dropped at the wrap boundary, and quoted strings / code content could be pushed below a row of pure indent whitespace instead of wrapping in place.
+
+* Fixed the end-of-line cursor overlapping the vertical scrollbar on wrapped rows that exactly filled the content width.
+
+* Reduced idle CPU by avoiding per-tick serialization of config and diagnostics in the plugin snapshot — an idle editor with LSP active no longer reserializes this state dozens to hundreds of times per second.
+
+* Silenced a bogus `ts -> TypeScript` alias warning at startup (#1601, #1603); the alias itself already worked.
+
 ## 0.2.24
 
 ### Features
