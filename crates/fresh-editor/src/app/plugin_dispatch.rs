@@ -213,6 +213,7 @@ impl Editor {
 
             // Update working directory (for spawning processes in correct directory)
             snapshot.working_dir = self.working_dir.clone();
+            snapshot.authority_label = self.authority.display_label.clone();
 
             // Update LSP diagnostics: Arc refcount bump; no clone.
             snapshot.diagnostics = Arc::clone(&self.stored_diagnostics);

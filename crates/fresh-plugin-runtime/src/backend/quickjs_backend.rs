@@ -1444,6 +1444,21 @@ impl JsEditorApi {
             .unwrap_or_else(|_| ".".to_string())
     }
 
+    /// Get the active authority's display label.
+    ///
+    /// Empty means the local (default) authority. A non-empty value
+    /// means a plugin-installed or SSH authority is in effect (e.g.
+    /// `"Container:abc123def456"` for a devcontainer). Intended as a
+    /// simple "am I already attached?" check that survives editor
+    /// restarts — the label lives on the `Editor` state snapshot so it
+    /// is fresh after the authority-transition restart flow.
+    pub fn get_authority_label(&self) -> String {
+        self.state_snapshot
+            .read()
+            .map(|s| s.authority_label.clone())
+            .unwrap_or_default()
+    }
+
     // === Path Operations ===
 
     /// Join path components (variadic - accepts multiple string arguments)

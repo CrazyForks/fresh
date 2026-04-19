@@ -750,6 +750,15 @@ pub struct EditorStateSnapshot {
     pub clipboard: String,
     /// Editor's working directory (for file operations and spawning processes)
     pub working_dir: PathBuf,
+    /// Status-bar / explorer label for the active authority.
+    ///
+    /// Empty = the local (default) authority with nothing to render.
+    /// Non-empty means a non-local authority is installed (e.g.
+    /// `"Container:abc123def456"` for a devcontainer). Plugins can
+    /// read this via `editor.getAuthorityLabel()` to detect "already
+    /// attached" without having to track state across editor restarts.
+    #[serde(default)]
+    pub authority_label: String,
     /// LSP diagnostics per file URI.
     /// Maps file URI string to Vec of diagnostics for that file.
     ///
@@ -841,6 +850,7 @@ impl EditorStateSnapshot {
             selected_text: None,
             clipboard: String::new(),
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            authority_label: String::new(),
             diagnostics: Arc::new(HashMap::new()),
             folding_ranges: Arc::new(HashMap::new()),
             config: Arc::new(serde_json::Value::Null),

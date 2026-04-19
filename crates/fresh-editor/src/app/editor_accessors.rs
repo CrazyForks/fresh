@@ -488,6 +488,12 @@ impl Editor {
         &self.authority
     }
 
+    /// The editor's current working directory.  This is the project
+    /// root; individual buffers may live elsewhere.
+    pub fn working_dir(&self) -> &std::path::Path {
+        &self.working_dir
+    }
+
     /// Get remote connection info if editing remote files
     ///
     /// Returns `Some("user@host")` for remote editing, `None` for local.

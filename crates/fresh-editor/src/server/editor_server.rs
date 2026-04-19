@@ -18,7 +18,8 @@ use ratatui::Terminal;
 use crate::app::Editor;
 use crate::config::Config;
 use crate::config_io::DirectoryContext;
-use crate::model::filesystem::{FileSystem, StdFileSystem};
+// Filesystem is now owned by `self.current_authority`; the server no
+// longer constructs a `StdFileSystem` directly.
 use crate::server::capture_backend::{
     terminal_setup_sequences, terminal_teardown_sequences, CaptureBackend,
 };
@@ -65,6 +66,12 @@ pub struct EditorServer {
     next_wait_id: u64,
     /// Maps wait_id → client_id for clients waiting on file events
     waiting_clients: std::collections::HashMap<u64, u64>,
+    /// Current authority. Carried across editor rebuilds so plugin-
+    /// installed authorities (e.g. a devcontainer attach) survive the
+    /// restart-based transition: the old editor is dropped, a new one
+    /// is built with this authority in effect, and clients stay
+    /// connected the whole time. Starts as `Authority::local()`.
+    current_authority: crate::services::authority::Authority,
 }
 
 /// Buffered writer for sending data to a client without blocking the server loop.
@@ -167,6 +174,7 @@ impl EditorServer {
             last_input_client: None,
             next_wait_id: 1,
             waiting_clients: std::collections::HashMap::new(),
+            current_authority: crate::services::authority::Authority::local(),
         })
     }
 
@@ -271,9 +279,31 @@ impl EditorServer {
                 );
             }
 
-            // Check if editor should quit
-            if let Some(ref editor) = self.editor {
+            // Check if editor should quit. `should_quit` is set both
+            // by a genuine user quit and by `request_restart`
+            // (triggered by `change_working_dir` and by
+            // `install_authority`).  Distinguish the two by peeking at
+            // the editor's pending-restart fields: if either carries a
+            // value, rebuild the editor in place and keep clients
+            // attached; otherwise this is a real shutdown.
+            if let Some(ref mut editor) = self.editor {
                 if editor.should_quit() {
+                    let pending_authority = editor.take_pending_authority();
+                    let restart_dir = editor.take_restart_dir();
+                    if pending_authority.is_some() || restart_dir.is_some() {
+                        tracing::info!(
+                            "Session rebuild requested (authority={}, dir={})",
+                            pending_authority.is_some(),
+                            restart_dir.is_some()
+                        );
+                        if let Err(e) = self.rebuild_editor(restart_dir, pending_authority) {
+                            tracing::error!("Session rebuild failed, shutting down: {}", e);
+                            self.shutdown.store(true, Ordering::SeqCst);
+                            continue;
+                        }
+                        needs_render = true;
+                        continue;
+                    }
                     tracing::info!("Editor requested quit");
                     self.shutdown.store(true, Ordering::SeqCst);
                     continue;
@@ -419,18 +449,19 @@ impl EditorServer {
         Ok(())
     }
 
-    /// Initialize the editor with the current terminal size
-    /// Initialize the editor with the current terminal size.
-    ///
-    /// Performs the full startup sequence: create editor, set session name,
-    /// restore workspace, recover buffers from hot exit, start recovery session.
-    /// Called on first client connection.
-    pub fn initialize_editor(&mut self) -> io::Result<()> {
+    /// Build a fresh `Editor` instance using the current configuration
+    /// and stored authority.  Shared between first-boot initialization
+    /// and post-restart rebuild.
+    fn build_editor_instance(&self) -> io::Result<(Editor, Terminal<CaptureBackend>)> {
         let backend = CaptureBackend::new(self.term_size.cols, self.term_size.rows);
         let terminal = Terminal::new(backend)
             .map_err(|e| io::Error::other(format!("Failed to create terminal: {}", e)))?;
 
-        let filesystem: Arc<dyn FileSystem + Send + Sync> = Arc::new(StdFileSystem);
+        // The Editor constructor still takes a filesystem; the real
+        // authority is installed via `set_boot_authority` right after
+        // construction so plugins and init.ts load against the correct
+        // backend from the first tick.
+        let filesystem = self.current_authority.filesystem.clone();
         let color_capability = ColorCapability::TrueColor; // Assume truecolor for now
 
         let mut editor = Editor::with_working_dir(
@@ -444,6 +475,8 @@ impl EditorServer {
             filesystem,
         )
         .map_err(|e| io::Error::other(format!("Failed to create editor: {}", e)))?;
+
+        editor.set_boot_authority(self.current_authority.clone());
 
         // Auto-load init.ts via the same pipeline as the non-server entry point.
         editor.load_init_script(self.config.init_enabled);
@@ -462,6 +495,18 @@ impl EditorServer {
                 .unwrap_or_else(|| "session".to_string())
         });
         editor.set_session_name(Some(session_display_name));
+
+        Ok((editor, terminal))
+    }
+
+    /// Initialize the editor on first client connection.
+    ///
+    /// Performs the full first-boot sequence: build editor, restore
+    /// workspace, recover buffers from hot exit, start recovery
+    /// session.  Subsequent rebuilds (on authority/working-dir change)
+    /// go through [`rebuild_editor`].
+    pub fn initialize_editor(&mut self) -> io::Result<()> {
+        let (mut editor, terminal) = self.build_editor_instance()?;
 
         // Restore workspace and recovery data (mirrors the standalone startup
         // path in handle_first_run_setup in main.rs).
@@ -505,6 +550,89 @@ impl EditorServer {
             "Editor initialized with size {}x{}",
             self.term_size.cols,
             self.term_size.rows
+        );
+
+        Ok(())
+    }
+
+    /// Rebuild the editor in place after an authority transition or a
+    /// working-directory change.
+    ///
+    /// Mirrors the restart loop in `main.rs`: save the workspace so
+    /// open buffers come back, drop the old editor (which cascades
+    /// into shutting down terminals, LSP servers, and plugin state),
+    /// swap in any new authority / working-dir, build a fresh editor,
+    /// and restore the workspace under the new backend.  The TCP
+    /// clients stay connected throughout; each is flagged for a full
+    /// redraw on the next frame so they see the new editor from a
+    /// clean state rather than a mid-transition frame.
+    pub(crate) fn rebuild_editor(
+        &mut self,
+        new_working_dir: Option<PathBuf>,
+        new_authority: Option<crate::services::authority::Authority>,
+    ) -> io::Result<()> {
+        // Flush buffer saves + workspace before dropping the old editor,
+        // mirroring the standalone exit path.  On failure we log and
+        // continue — rebuild should still succeed.
+        if let Some(ref mut editor) = self.editor {
+            if editor.config().editor.auto_save_enabled {
+                if let Err(e) = editor.save_all_on_exit() {
+                    tracing::warn!("Rebuild: failed to auto-save on exit: {}", e);
+                }
+            }
+            if let Err(e) = editor.end_recovery_session() {
+                tracing::warn!("Rebuild: failed to end recovery session: {}", e);
+            }
+            if let Err(e) = editor.save_workspace() {
+                tracing::warn!("Rebuild: failed to save workspace: {}", e);
+            }
+        }
+
+        // Drop old editor + terminal.  Drop impls shut down PTYs, LSP
+        // servers, and plugin threads.
+        self.editor = None;
+        self.terminal = None;
+
+        // Apply the pending changes before building the next editor.
+        if let Some(dir) = new_working_dir {
+            tracing::info!("Rebuild: switching working dir to {}", dir.display());
+            self.config.working_dir = dir;
+        }
+        if let Some(auth) = new_authority {
+            tracing::info!(
+                "Rebuild: installing authority with label {:?}",
+                auth.display_label
+            );
+            self.current_authority = auth;
+        }
+
+        let (mut editor, terminal) = self.build_editor_instance()?;
+
+        // Bring buffers back under the new backend.  `try_restore_workspace`
+        // reads the workspace file we wrote above and re-opens the
+        // same splits/buffers.
+        match editor.try_restore_workspace() {
+            Ok(true) => tracing::info!("Rebuild: workspace restored"),
+            Ok(false) => tracing::debug!("Rebuild: no workspace to restore"),
+            Err(e) => tracing::warn!("Rebuild: failed to restore workspace: {}", e),
+        }
+
+        if let Err(e) = editor.start_recovery_session() {
+            tracing::warn!("Rebuild: failed to start recovery session: {}", e);
+        }
+
+        self.terminal = Some(terminal);
+        self.editor = Some(editor);
+
+        // Force every attached client to repaint from scratch — the
+        // previous frame described the old editor's screen.
+        for client in &mut self.clients {
+            client.needs_full_render = true;
+        }
+
+        tracing::info!(
+            "Rebuild: complete, {} clients kept attached",
+            self.clients.len()
         );
 
         Ok(())

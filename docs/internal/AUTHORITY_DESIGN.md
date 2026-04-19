@@ -134,6 +134,40 @@ The in-place swap remains a future optimization. The single-line
 escape hatch is at `install_authority` — replace the `pending + restart`
 with a direct swap once every cache-holder is audited.
 
+### Session mode (client/server daemon)
+
+Session mode (`fresh --session` / `fresh server`) runs the editor in a
+long-lived daemon with thin clients attaching over IPC. The daemon
+must not exit on every authority transition or working-dir change —
+that would disconnect every attached client.
+
+`EditorServer` (`crates/fresh-editor/src/server/editor_server.rs`)
+mirrors the standalone restart loop: when the editor sets
+`should_quit` via `request_restart` (either from
+`change_working_dir` or from `install_authority`), the server takes
+the pending fields off the old editor, calls `rebuild_editor(...)`,
+and clients stay attached. `rebuild_editor`:
+
+1. Saves workspace + ends recovery session on the old editor.
+2. Drops the old editor (terminals, LSPs, plugin threads unwind).
+3. Updates `self.config.working_dir` and/or `self.current_authority`.
+4. Builds a fresh editor via `build_editor_instance` with the new
+   authority already installed (`set_boot_authority`).
+5. Restores the workspace so open buffers come back under the new
+   backend.
+6. Flags every connected client for a full repaint on the next frame.
+
+If neither a pending authority nor a restart dir is present,
+`should_quit` is treated as a real shutdown request and the daemon
+exits as before. Tests cover both the authority-swap and the
+working-dir-swap paths (`test_session_rebuild_swaps_editor_and_authority`
+and `test_session_rebuild_switches_working_dir`).
+
+Session-mode startup is always `Authority::local()`. The SSH CLI
+form is not yet plumbed through `EditorServerConfig`; adding it is a
+straightforward follow-up (an optional `startup_authority` field that
+defaults to local) but out of scope for this refactor.
+
 ### Related: `change_working_dir`
 
 `change_working_dir` uses the same restart machinery to switch project

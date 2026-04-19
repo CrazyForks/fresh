@@ -1063,14 +1063,28 @@ if (findConfig()) {
 
   editor.debug("Dev Container plugin initialized: " + name);
 
-  // One-shot per-workspace attach prompt. If the user has already
-  // decided for this workspace (attached = yes, dismissed = no),
-  // don't bug them again. Deliberate: no automatic silent attach —
-  // attaching is a destructive transition (the editor restarts) so
-  // the user always explicitly opts in.
-  const previousDecision = readAttachDecision();
-  if (previousDecision === null) {
-    showAttachPrompt();
+  // Skip the attach prompt whenever a non-local authority is already
+  // installed. This covers the (common) case of the post-attach
+  // restart reloading the plugin with the container authority in
+  // effect — the user already said yes, don't ask again. We look at
+  // the authority label rather than plugin global state because state
+  // is per-Editor and is wiped by the restart; the label survives
+  // because it lives on the fresh Editor's authority.
+  const authorityLabel = editor.getAuthorityLabel();
+  const alreadyAttached = authorityLabel.length > 0;
+
+  if (!alreadyAttached) {
+    // One-shot per-session dismissal: if the user already said "Not
+    // now" in this Editor process, don't re-prompt. On a cold restart
+    // the state is gone and we ask again — that's fine.
+    const previousDecision = readAttachDecision();
+    if (previousDecision === null) {
+      showAttachPrompt();
+    }
+  } else {
+    editor.debug(
+      "Dev Container plugin: authority '" + authorityLabel + "' already installed, skipping attach prompt",
+    );
   }
 } else {
   editor.debug("Dev Container plugin: no devcontainer.json found");
