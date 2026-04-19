@@ -156,9 +156,7 @@ impl TerminalManager {
         cwd: Option<std::path::PathBuf>,
         log_path: Option<std::path::PathBuf>,
         backing_path: Option<std::path::PathBuf>,
-        container_id: Option<String>,
-        container_user: Option<String>,
-        container_workspace: Option<String>,
+        terminal_wrapper: Option<crate::services::authority::TerminalWrapper>,
     ) -> Result<TerminalId, String> {
         let id = TerminalId(self.next_id);
         self.next_id += 1;
@@ -188,26 +186,13 @@ impl TerminalManager {
                     }
                 })?;
 
-            // Build command: use docker exec when inside a devcontainer.
-            // Use "bash" for the container shell since the host's $SHELL (e.g. zsh)
-            // may not be installed inside the Linux container.
-            // Pass -u <user> so we run as the correct user (e.g. "vscode"), not root.
-            let (shell, cmd_args) = if let Some(ref id) = container_id {
-                let mut args = vec!["exec".to_string(), "-it".to_string()];
-                if let Some(ref user) = container_user {
-                    args.push("-u".to_string());
-                    args.push(user.clone());
-                }
-                if let Some(ref ws) = container_workspace {
-                    args.push("-w".to_string());
-                    args.push(ws.clone());
-                }
-                args.push(id.clone());
-                args.push("bash".to_string());
-                args.push("-l".to_string());
-                ("docker".to_string(), args)
-            } else {
-                (detect_shell(), vec![])
+            // Authority may rewrite the shell (e.g. devcontainer provider wraps
+            // in `docker exec -it -u <user> -w <workspace> <id> bash -l`).
+            // The wrapper signals via `manages_cwd` whether cwd is already
+            // handled by its args (and `CommandBuilder::cwd()` must be skipped).
+            let (shell, cmd_args, skip_cwd) = match terminal_wrapper {
+                Some(w) => (w.command, w.args, w.manages_cwd),
+                None => (detect_shell(), vec![], false),
             };
             tracing::info!("Spawning terminal with shell: {}", shell);
 
@@ -215,7 +200,7 @@ impl TerminalManager {
             for arg in &cmd_args {
                 cmd.arg(arg);
             }
-            if container_id.is_none() {
+            if !skip_cwd {
                 if let Some(ref dir) = cwd {
                     cmd.cwd(dir);
                 }

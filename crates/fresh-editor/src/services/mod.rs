@@ -4,6 +4,7 @@
 //! I/O, and async operations.
 
 pub mod async_bridge;
+pub mod authority;
 pub mod clipboard;
 pub mod completion;
 pub mod counters;

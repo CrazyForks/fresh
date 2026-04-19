@@ -1202,9 +1202,7 @@ impl Editor {
             terminal.cwd.clone(),
             Some(log_path.clone()),
             Some(backing_path.clone()),
-            self.container_id.clone(),
-            self.container_user.clone(),
-            self.container_workspace.clone(),
+            self.terminal_wrapper.clone(),
         ) {
             Ok(id) => id,
             Err(e) => {

@@ -964,14 +964,14 @@ pub struct Editor {
     /// Terminal manager for built-in terminal support
     terminal_manager: crate::services::terminal::TerminalManager,
 
-    /// Container ID when connected to a devcontainer (used for docker exec terminal)
-    container_id: Option<String>,
+    /// Terminal wrapper supplied by the active authority (e.g. docker exec
+    /// for a devcontainer). `None` means spawn the host shell directly.
+    terminal_wrapper: Option<crate::services::authority::TerminalWrapper>,
 
-    /// Remote user inside the container (e.g. "vscode") for docker exec -u
-    container_user: Option<String>,
-
-    /// Workspace path inside the container (e.g. "/workspaces/project") for docker exec -w
-    container_workspace: Option<String>,
+    /// Display string supplied by the active authority
+    /// (e.g. `"Container:abc123"`). `None` when operating locally.
+    /// Falls back to the filesystem's own connection info for SSH remote.
+    authority_display_string: Option<String>,
 
     /// Maps buffer ID to terminal ID (for terminal buffers)
     terminal_buffers: HashMap<BufferId, crate::services::terminal::TerminalId>,

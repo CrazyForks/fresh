@@ -502,12 +502,10 @@ struct SetupState {
     /// Terminal mode state (raw mode, alternate screen, etc.)
     /// Drop impl restores terminal on cleanup
     terminal_modes: TerminalModes,
-    /// Container ID when connected to a devcontainer (for docker exec terminal)
-    container_id: Option<String>,
-    /// Remote user inside the container (e.g. "vscode") for docker exec -u
-    container_user: Option<String>,
-    /// Workspace path inside the container (e.g. "/workspaces/project") for docker exec -w
-    container_workspace: Option<String>,
+    /// Terminal wrapper from the active authority (e.g. docker exec for a devcontainer).
+    terminal_wrapper: Option<fresh::services::authority::TerminalWrapper>,
+    /// Authority-provided display string (e.g. `Container:abc123`).
+    authority_display_string: Option<String>,
     /// Status message to display immediately after startup (e.g. devcontainer errors)
     initial_status_message: Option<String>,
 }
@@ -1123,17 +1121,10 @@ struct RemoteSession {
     _reconnect_handle: tokio::task::JoinHandle<()>,
 }
 
-/// Result of creating filesystem - includes optional remote session to keep alive
+/// Result of creating the initial authority - includes optional remote
+/// session that must be kept alive for remote editing.
 struct FilesystemResult {
-    filesystem: std::sync::Arc<dyn FileSystem + Send + Sync>,
-    /// Process spawner for plugin command execution
-    process_spawner: std::sync::Arc<dyn remote::ProcessSpawner>,
-    /// Container ID when connected to a devcontainer (for docker exec terminal)
-    container_id: Option<String>,
-    /// Remote user inside the container (e.g. "vscode") for docker exec -u
-    container_user: Option<String>,
-    /// Workspace path inside the container (e.g. "/workspaces/project") for docker exec -w
-    container_workspace: Option<String>,
+    authority: fresh::services::authority::ActiveAuthority,
     /// Remote session resources - must be kept alive for remote editing
     remote_session: Option<RemoteSession>,
 }
@@ -1144,11 +1135,7 @@ fn create_filesystem(remote_info: &Option<RemoteLocation>) -> AnyhowResult<Files
         connect_remote(remote)
     } else {
         Ok(FilesystemResult {
-            filesystem: std::sync::Arc::new(StdFileSystem),
-            process_spawner: std::sync::Arc::new(remote::LocalProcessSpawner),
-            container_id: None,
-            container_user: None,
-            container_workspace: None,
+            authority: fresh::services::authority::ActiveAuthority::local(),
             remote_session: None,
         })
     }
@@ -1196,12 +1183,16 @@ fn connect_remote(remote: &RemoteLocation) -> AnyhowResult<FilesystemResult> {
         remote::spawn_reconnect_task(channel, reconnect_params)
     };
 
+    // SSH authority: remote filesystem + remote spawner. No terminal wrapper
+    // (remote terminal spawn is not yet plumbed — that's the next layer).
+    // Display string comes from the filesystem's `remote_connection_info`.
     Ok(FilesystemResult {
-        filesystem,
-        process_spawner,
-        container_id: None,
-        container_user: None,
-        container_workspace: None,
+        authority: fresh::services::authority::ActiveAuthority {
+            filesystem,
+            process_spawner,
+            terminal_wrapper: None,
+            display_string: None,
+        },
         remote_session: Some(RemoteSession {
             _connection: connection,
             _runtime: rt,
@@ -1251,23 +1242,48 @@ fn connect_devcontainer(
 
     let container_id = up_result.container_id;
     let container_user = up_result.remote_user;
-    let container_workspace = Some(up_result.remote_workspace_folder);
+    let container_workspace = up_result.remote_workspace_folder;
     tracing::info!(
-        "Devcontainer ready, container_id={}, user={:?}, workspace={:?}",
+        "Devcontainer ready, container_id={}, user={:?}, workspace={}",
         container_id,
         container_user,
-        container_workspace
+        container_workspace,
     );
 
+    // Build the docker-exec terminal wrapper. Use "bash" as the container
+    // shell (the host's $SHELL — e.g. zsh — may not exist inside the
+    // container). Pass `-u <user>` and `-w <workspace>` when known.
+    let mut args: Vec<String> = vec!["exec".into(), "-it".into()];
+    if let Some(ref user) = container_user {
+        args.push("-u".into());
+        args.push(user.clone());
+    }
+    args.push("-w".into());
+    args.push(container_workspace.clone());
+    args.push(container_id.clone());
+    args.push("bash".into());
+    args.push("-l".into());
+
+    let short_id = if container_id.len() > 12 {
+        &container_id[..12]
+    } else {
+        container_id.as_str()
+    };
+    let display_string = Some(format!("Container:{}", short_id));
+
     // The workspace is mounted into the container, so use the local filesystem
-    // for file editing. Terminal splits will use `docker exec -w <workspace>` to
-    // run inside the container starting in the correct directory.
+    // for file editing. Terminals are routed via the wrapper below.
     let result = FilesystemResult {
-        filesystem: std::sync::Arc::new(StdFileSystem),
-        process_spawner: std::sync::Arc::new(remote::LocalProcessSpawner),
-        container_id: Some(container_id),
-        container_user,
-        container_workspace,
+        authority: fresh::services::authority::ActiveAuthority {
+            filesystem: std::sync::Arc::new(StdFileSystem),
+            process_spawner: std::sync::Arc::new(remote::LocalProcessSpawner),
+            terminal_wrapper: Some(fresh::services::authority::TerminalWrapper {
+                command: "docker".into(),
+                args,
+                manages_cwd: true,
+            }),
+            display_string,
+        },
         remote_session: None,
     };
 
@@ -1401,13 +1417,10 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
     // For remote editing, this establishes the SSH connection
     tracing::info!("Creating filesystem...");
     let FilesystemResult {
-        filesystem,
-        process_spawner,
-        mut container_id,
-        mut container_user,
-        mut container_workspace,
+        mut authority,
         remote_session,
     } = create_filesystem(&remote_info)?;
+    let filesystem = authority.filesystem.clone();
     tracing::info!("Filesystem created");
 
     let mut working_dir = None;
@@ -1462,8 +1475,7 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
     // Falls back to the current working directory so `fresh` (no args) also auto-detects.
     // When auto_detect is true, connect automatically without prompting (mirrors VS Code behavior).
     let mut initial_status_message: Option<String> = None;
-    let (filesystem, process_spawner) = if remote_info.is_none() && config.devcontainer.auto_detect
-    {
+    if remote_info.is_none() && config.devcontainer.auto_detect {
         // Use working_dir when a directory was passed as an argument;
         // fall back to effective_working_dir (current dir) otherwise.
         let detect_dir = working_dir
@@ -1471,7 +1483,7 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
             .cloned()
             .unwrap_or_else(|| effective_working_dir.clone());
         if let Some(detected) =
-            fresh::services::devcontainer::detect_devcontainer(&detect_dir, filesystem.as_ref())
+            fresh::services::devcontainer::detect_devcontainer(&detect_dir, authority.filesystem.as_ref())
         {
             tracing::info!(
                 "Devcontainer config detected: {}",
@@ -1480,10 +1492,7 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
             match connect_devcontainer(&detected.workspace_path, &config.devcontainer.cli_path) {
                 Ok((result, remote_workspace)) => {
                     working_dir = Some(remote_workspace);
-                    container_id = result.container_id;
-                    container_user = result.container_user;
-                    container_workspace = result.container_workspace;
-                    (result.filesystem, result.process_spawner)
+                    authority = result.authority;
                 }
                 Err(e) => {
                     let detail = format!("{:#}", e);
@@ -1492,15 +1501,12 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
                         "Devcontainer failed: {}. Using local filesystem.",
                         detail
                     ));
-                    (filesystem, process_spawner)
                 }
             }
-        } else {
-            (filesystem, process_spawner)
         }
-    } else {
-        (filesystem, process_spawner)
-    };
+    }
+    let filesystem = authority.filesystem.clone();
+    let process_spawner = authority.process_spawner.clone();
 
     tracing::info!("Config loaded");
 
@@ -1585,9 +1591,8 @@ fn initialize_app(args: &Args) -> AnyhowResult<SetupState> {
         filesystem,
         process_spawner,
         _remote_session: remote_session,
-        container_id,
-        container_user,
-        container_workspace,
+        terminal_wrapper: authority.terminal_wrapper,
+        authority_display_string: authority.display_string,
         initial_status_message,
     })
 }
@@ -3072,9 +3077,8 @@ fn real_main() -> AnyhowResult<()> {
         filesystem,
         process_spawner,
         _remote_session,
-        container_id,
-        container_user,
-        container_workspace,
+        terminal_wrapper,
+        authority_display_string,
         initial_status_message,
     } = initialize_app(&args).context("Failed to initialize application")?;
 
@@ -3115,9 +3119,8 @@ fn real_main() -> AnyhowResult<()> {
 
         // Set the process spawner (LocalProcessSpawner for local, RemoteProcessSpawner for remote)
         editor.set_process_spawner(process_spawner.clone());
-        editor.set_container_id(container_id.clone());
-        editor.set_container_user(container_user.clone());
-        editor.set_container_workspace(container_workspace.clone());
+        editor.set_terminal_wrapper(terminal_wrapper.clone());
+        editor.set_authority_display_string(authority_display_string.clone());
 
         if let Some(ref msg) = initial_status_message {
             editor.set_status_message(msg.clone());

@@ -435,18 +435,23 @@ impl Editor {
         self.process_spawner = spawner;
     }
 
-    /// Set the container ID for devcontainer terminal support
-    pub fn set_container_id(&mut self, id: Option<String>) {
-        self.container_id = id;
+    /// Install the authority's terminal wrapper (or clear it).
+    ///
+    /// When set, integrated terminal spawns will be rewritten by this
+    /// wrapper instead of launching the host shell directly.
+    pub fn set_terminal_wrapper(
+        &mut self,
+        wrapper: Option<crate::services::authority::TerminalWrapper>,
+    ) {
+        self.terminal_wrapper = wrapper;
     }
 
-    /// Set the container user for devcontainer docker exec (-u flag)
-    pub fn set_container_user(&mut self, user: Option<String>) {
-        self.container_user = user;
-    }
-
-    pub fn set_container_workspace(&mut self, workspace: Option<String>) {
-        self.container_workspace = workspace;
+    /// Install the authority-provided status display string.
+    ///
+    /// Shown in the status bar and file explorer when the filesystem itself
+    /// doesn't carry a connection string (non-SSH authorities).
+    pub fn set_authority_display_string(&mut self, s: Option<String>) {
+        self.authority_display_string = s;
     }
 
     /// Get remote connection info if editing remote files
@@ -458,7 +463,8 @@ impl Editor {
 
     /// Get connection string for display in status bar and file explorer.
     ///
-    /// Returns SSH connection string, Container:<id>, or None for local editing.
+    /// Returns SSH connection string (from filesystem),
+    /// authority-provided string (e.g. `Container:<id>`), or `None`.
     pub fn connection_display_string(&self) -> Option<String> {
         if let Some(conn) = self.remote_connection_info() {
             Some(if self.filesystem.is_remote_connected() {
@@ -466,15 +472,8 @@ impl Editor {
             } else {
                 format!("{} (Disconnected)", conn)
             })
-        } else if let Some(ref id) = self.container_id {
-            let short = if id.len() > 12 {
-                &id[..12]
-            } else {
-                id.as_str()
-            };
-            Some(format!("Container:{}", short))
         } else {
-            None
+            self.authority_display_string.clone()
         }
     }
 
