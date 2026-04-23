@@ -510,17 +510,6 @@ impl Editor {
         &self.working_dir
     }
 
-    /// Find the buffer id backing a given on-disk path, if any.
-    ///
-    /// Matches by exact path — callers looking for "any buffer under a
-    /// directory" should iterate and check `starts_with` themselves.
-    pub fn buffer_id_for_path(&self, path: &std::path::Path) -> Option<BufferId> {
-        self.buffers
-            .iter()
-            .find(|(_, state)| state.buffer.file_path() == Some(path))
-            .map(|(id, _)| *id)
-    }
-
     /// Return buffer ids whose on-disk path sits at or under `root`.
     /// Used by file-explorer operations that need to react when a file
     /// or directory on disk goes away or moves.

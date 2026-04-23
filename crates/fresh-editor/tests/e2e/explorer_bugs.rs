@@ -1331,12 +1331,13 @@ fn test_refresh_resets_cursor_to_root_when_path_disappears() {
     );
 }
 
-/// Deleting a file in the explorer used to leave any open buffer backed by
-/// that file alive — the tab kept rendering with stale content and `Ctrl+S`
-/// would write it right back to the trashed path, silently resurrecting
-/// the file the user just deleted. The buffer must be closed (or, for a
-/// directory delete, every buffer whose path sits under the deleted dir
-/// must be closed) so the tab bar matches reality.
+/// Deleting a file in the explorer used to leave any open buffer backed
+/// by that file alive. The tab kept rendering with stale content; and
+/// Ctrl+S on that buffer wrote back to the trashed path, silently
+/// resurrecting the file the user just deleted. Assertion is strict:
+/// the tab bar must no longer advertise the file, AND the file must
+/// not reappear on disk (any lingering buffer could resurrect it via
+/// auto-save or an incidental Ctrl+S).
 #[test]
 fn test_delete_closes_open_buffer_for_deleted_file() {
     let mut harness = EditorTestHarness::with_temp_project(120, 40).unwrap();
@@ -1344,12 +1345,14 @@ fn test_delete_closes_open_buffer_for_deleted_file() {
     fs::write(project_root.join("victim.txt"), "v").unwrap();
     fs::write(project_root.join("bystander.txt"), "b").unwrap();
 
-    // Open victim.txt as a permanent tab via the explorer (Enter on the
-    // selected file is the "open permanently" gesture).
-    harness.editor_mut().focus_file_explorer();
+    // Open victim.txt as a permanent tab via the explorer (Enter on
+    // the selected file is the "open permanently" gesture).
+    harness
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        .unwrap();
     harness.wait_for_file_explorer().unwrap();
     harness.wait_for_file_explorer_item("victim.txt").unwrap();
-    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // bystander.txt (dirs first? no dirs here, files alphabetical)
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // bystander.txt
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // victim.txt
     harness
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
@@ -1383,31 +1386,41 @@ fn test_delete_closes_open_buffer_for_deleted_file() {
     harness.wait_for_prompt_closed().unwrap();
     harness.render().unwrap();
 
-    // The deleted file's tab must be closed. Inspect only the tab bar row
-    // so a leftover status line or title doesn't create a false positive.
+    // The deleted file's tab must be closed. Inspect only the tab bar
+    // row so a leftover status line or title doesn't create a false
+    // positive.
     let tab_bar_after = harness.screen_row_text(1);
     assert!(
         !tab_bar_after.contains("victim.txt"),
         "tab for deleted file must be closed. Tab bar: {:?}",
         tab_bar_after
     );
+
+    // No lingering buffer can be resurrecting the file on save / auto-save.
+    assert!(
+        !project_root.join("victim.txt").exists(),
+        "deleted file must not reappear at its original path"
+    );
 }
 
 /// Renaming a directory in the explorer used to leave any buffer for a
-/// file *under* that directory still pointing at the old path. Saving
-/// that buffer would recreate the old directory and the old file
-/// alongside the renamed one, because the buffer had no idea its file
-/// had moved. Every affected buffer's `file_path()` must track the
-/// rename so saving still writes to the right place.
+/// file *under* that directory still pointing at the old path — so a
+/// subsequent Ctrl+S wrote to the old (now-gone) location, recreating
+/// the old directory alongside the renamed one. Drive the full
+/// user-visible flow: open a file, rename its parent dir, type into
+/// the buffer, save, and confirm on disk that the save landed at the
+/// new path and did NOT resurrect the old one.
 #[test]
-fn test_rename_directory_updates_buffers_for_files_inside() {
+fn test_rename_directory_redirects_save_to_new_path() {
     let mut harness = EditorTestHarness::with_temp_project(120, 40).unwrap();
     let project_root = harness.project_dir().unwrap();
     fs::create_dir(project_root.join("mydir")).unwrap();
-    fs::write(project_root.join("mydir").join("inner.txt"), "content").unwrap();
+    fs::write(project_root.join("mydir").join("inner.txt"), "orig\n").unwrap();
 
-    // Open mydir/inner.txt as a permanent tab.
-    harness.editor_mut().focus_file_explorer();
+    // Open mydir/inner.txt as a permanent tab (Enter also focuses the editor).
+    harness
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        .unwrap();
     harness.wait_for_file_explorer().unwrap();
     harness.wait_for_file_explorer_item("mydir").unwrap();
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // mydir
@@ -1420,7 +1433,7 @@ fn test_rename_directory_updates_buffers_for_files_inside() {
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
 
-    // Go back to the explorer, put the cursor on the directory, rename it.
+    // Back to the explorer, cursor onto the directory, F2 to rename.
     harness
         .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
         .unwrap();
@@ -1443,50 +1456,68 @@ fn test_rename_directory_updates_buffers_for_files_inside() {
         .send_key(KeyCode::Enter, KeyModifiers::NONE)
         .unwrap();
     harness.wait_for_prompt_closed().unwrap();
-    harness.render().unwrap();
 
-    // The directory was renamed on disk.
-    assert!(
-        project_root.join("renamed_dir").join("inner.txt").exists(),
-        "directory rename must have landed on disk"
-    );
+    let new_inner = project_root.join("renamed_dir").join("inner.txt");
+    let old_inner = project_root.join("mydir").join("inner.txt");
+    assert!(new_inner.exists(), "rename must have landed on disk");
     assert!(
         !project_root.join("mydir").exists(),
         "old directory must be gone after rename"
     );
 
-    // The buffer for inner.txt must now be backed by the new path so
-    // subsequent saves write to the right place. Look up the active
-    // buffer's persistence path directly — tab labels use a display
-    // name (filename, not full path), so they wouldn't catch a stale
-    // parent directory.
-    let new_inner = project_root.join("renamed_dir").join("inner.txt");
-    let old_inner = project_root.join("mydir").join("inner.txt");
+    // Switch focus back to the editor (Ctrl+E from explorer focuses the
+    // editor), append a sentinel, Ctrl+S to save.
+    harness
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness
+        .send_key(KeyCode::End, KeyModifiers::CONTROL)
+        .unwrap();
+    for ch in "SENTINEL\n".chars() {
+        harness
+            .send_key(KeyCode::Char(ch), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness
+        .send_key(KeyCode::Char('s'), KeyModifiers::CONTROL)
+        .unwrap();
+
+    // User-facing outcome: the sentinel landed in the renamed-directory
+    // file, and nothing resurrected the old directory or the old file.
+    harness
+        .wait_until(|_| {
+            fs::read_to_string(&new_inner)
+                .map(|s| s.contains("SENTINEL"))
+                .unwrap_or(false)
+        })
+        .unwrap();
     assert!(
-        harness.editor().buffer_id_for_path(&new_inner).is_some(),
-        "a buffer should exist at the new path {:?}",
-        new_inner
-    );
-    assert!(
-        harness.editor().buffer_id_for_path(&old_inner).is_none(),
-        "no buffer should still be backed by the old path {:?}",
+        !old_inner.exists(),
+        "save must not recreate the file at the old path: {:?}",
         old_inner
     );
+    assert!(
+        !project_root.join("mydir").exists(),
+        "save must not recreate the old parent directory"
+    );
 }
-/// Cutting a file in the explorer and pasting it into another directory
-/// used to leave the buffer backed by the old (now-gone) path. `Ctrl+S`
-/// would recreate the file at its original location, leaving the user
-/// with two copies — the moved one and a resurrected ghost. The buffer's
-/// `file_path()` must track the move so saves land at the new location.
+
+/// Cutting a file and pasting into another directory used to leave the
+/// buffer backed by the old (now-gone) path — so Ctrl+S recreated the
+/// file at its original location, leaving the user with duplicates (a
+/// moved copy AND a resurrected ghost). Drive the full flow through
+/// keystrokes and check the on-disk layout after a save.
 #[test]
-fn test_cut_paste_move_updates_buffer_file_path() {
+fn test_cut_paste_move_redirects_save_to_new_path() {
     let mut harness = EditorTestHarness::with_temp_project(120, 40).unwrap();
     let project_root = harness.project_dir().unwrap();
     fs::create_dir(project_root.join("dst")).unwrap();
-    fs::write(project_root.join("source.txt"), "content").unwrap();
+    fs::write(project_root.join("source.txt"), "orig\n").unwrap();
 
-    // Open source.txt as a permanent tab.
-    harness.editor_mut().focus_file_explorer();
+    // Open source.txt as a permanent tab (Enter also focuses the editor).
+    harness
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        .unwrap();
     harness.wait_for_file_explorer().unwrap();
     harness.wait_for_file_explorer_item("source.txt").unwrap();
     harness.send_key(KeyCode::Down, KeyModifiers::NONE).unwrap(); // dst (dirs first)
@@ -1511,22 +1542,45 @@ fn test_cut_paste_move_updates_buffer_file_path() {
         .unwrap();
     harness.render().unwrap();
 
-    // The file was moved on disk.
     let new_path = project_root.join("dst").join("source.txt");
     let old_path = project_root.join("source.txt");
-    assert!(new_path.exists(), "file should be at new location");
-    assert!(!old_path.exists(), "file should not be at old location");
-
-    // The buffer for source.txt must now be backed by the new path so
-    // subsequent saves write to the right place.
     assert!(
-        harness.editor().buffer_id_for_path(&new_path).is_some(),
-        "a buffer should exist at the new path {:?}",
-        new_path
+        new_path.exists(),
+        "file should be at new location after paste"
     );
     assert!(
-        harness.editor().buffer_id_for_path(&old_path).is_none(),
-        "no buffer should still be backed by the old path {:?}",
+        !old_path.exists(),
+        "file should not be at old location after paste"
+    );
+
+    // Focus editor, append sentinel, save.
+    harness
+        .send_key(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        .unwrap();
+    harness
+        .send_key(KeyCode::End, KeyModifiers::CONTROL)
+        .unwrap();
+    for ch in "SENTINEL\n".chars() {
+        harness
+            .send_key(KeyCode::Char(ch), KeyModifiers::NONE)
+            .unwrap();
+    }
+    harness
+        .send_key(KeyCode::Char('s'), KeyModifiers::CONTROL)
+        .unwrap();
+
+    // User-facing outcome: the sentinel is in the moved file at the new
+    // location, and the old path was not resurrected.
+    harness
+        .wait_until(|_| {
+            fs::read_to_string(&new_path)
+                .map(|s| s.contains("SENTINEL"))
+                .unwrap_or(false)
+        })
+        .unwrap();
+    assert!(
+        !old_path.exists(),
+        "save must not recreate the file at the old path: {:?}",
         old_path
     );
 }
