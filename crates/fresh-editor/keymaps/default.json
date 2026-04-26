@@ -10,6 +10,22 @@
       "when": "global"
     },
     {
+      "comment": "Quick Open files - find files in project",
+      "key": "'",
+      "modifiers": ["ctrl"],
+      "action": "quick_open_files",
+      "args": {},
+      "when": "global"
+    },
+    {
+      "comment": "Quick Open buffers - switch between open tabs",
+      "key": ";",
+      "modifiers": ["ctrl"],
+      "action": "quick_open_buffers",
+      "args": {},
+      "when": "global"
+    },
+    {
       "key": "F10",
       "modifiers": [],
       "action": "menu_activate",

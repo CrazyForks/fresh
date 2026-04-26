@@ -693,6 +693,24 @@ impl Editor {
                 // Start Quick Open with file suggestions (default mode)
                 self.start_quick_open();
             }
+            Action::QuickOpenBuffers => {
+                if let Some(prompt) = &self.prompt {
+                    if prompt.prompt_type == PromptType::QuickOpen {
+                        self.cancel_prompt();
+                        return Ok(());
+                    }
+                }
+                self.start_quick_open_with_prefix("#");
+            }
+            Action::QuickOpenFiles => {
+                if let Some(prompt) = &self.prompt {
+                    if prompt.prompt_type == PromptType::QuickOpen {
+                        self.cancel_prompt();
+                        return Ok(());
+                    }
+                }
+                self.start_quick_open_with_prefix("");
+            }
             Action::ToggleLineWrap => {
                 let new_value = !self.config.editor.line_wrap;
                 self.config_mut().editor.line_wrap = new_value;

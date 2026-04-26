@@ -469,6 +469,10 @@ pub enum Action {
     CommandPalette, // Alias for QuickOpen — kept for keymap/plugin compatibility
     /// Quick Open - unified prompt with prefix-based provider routing
     QuickOpen,
+    /// Quick Open - buffers (prefix: "#")
+    QuickOpenBuffers,
+    /// Quick Open - files (empty prefix)
+    QuickOpenFiles,
     ToggleLineWrap,
     ToggleCurrentLineHighlight,
     ToggleReadOnly,
@@ -928,6 +932,8 @@ impl Action {
             "clear_warnings" => ClearWarnings,
             "command_palette" => CommandPalette,
             "quick_open" => QuickOpen,
+            "quick_open_buffers" => QuickOpenBuffers,
+            "quick_open_files" => QuickOpenFiles,
             "toggle_line_wrap" => ToggleLineWrap,
             "toggle_current_line_highlight" => ToggleCurrentLineHighlight,
             "toggle_read_only" => ToggleReadOnly,
@@ -1591,6 +1597,8 @@ impl KeybindingResolver {
             // Global UI actions
             Action::CommandPalette
                 | Action::QuickOpen
+                | Action::QuickOpenBuffers
+                | Action::QuickOpenFiles
                 | Action::OpenSettings
                 | Action::MenuActivate
                 | Action::MenuOpen(_)
@@ -2218,6 +2226,8 @@ impl KeybindingResolver {
             Action::ClearWarnings => t!("action.clear_warnings"),
             Action::CommandPalette => t!("action.command_palette"),
             Action::QuickOpen => t!("action.quick_open"),
+            Action::QuickOpenBuffers => t!("action.quick_open_buffers"),
+            Action::QuickOpenFiles => t!("action.quick_open_files"),
             Action::InspectThemeAtCursor => t!("action.inspect_theme_at_cursor"),
             Action::ToggleLineWrap => t!("action.toggle_line_wrap"),
             Action::ToggleCurrentLineHighlight => t!("action.toggle_current_line_highlight"),

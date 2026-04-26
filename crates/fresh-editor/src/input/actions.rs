@@ -2887,6 +2887,8 @@ pub fn action_to_events(
         | Action::AddCursorBelow
         | Action::CommandPalette
         | Action::QuickOpen
+        | Action::QuickOpenBuffers
+        | Action::QuickOpenFiles
         | Action::ShowHelp
         | Action::ToggleLineWrap
         | Action::ToggleCurrentLineHighlight

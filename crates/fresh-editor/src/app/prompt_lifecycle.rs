@@ -155,6 +155,20 @@ impl Editor {
         self.update_quick_open_suggestions(">");
     }
 
+    /// Start Quick Open prompt with specified prefix
+    pub fn start_quick_open_with_prefix(&mut self, prefix: &str) {
+        self.on_editor_focus_lost();
+        self.status_message = None;
+        self.goto_line_preview = None;
+
+        let mut prompt = Prompt::with_suggestions(String::new(), PromptType::QuickOpen, vec![]);
+        prompt.input = prefix.to_string();
+        prompt.cursor_pos = prefix.len();
+        self.prompt = Some(prompt);
+
+        self.update_quick_open_suggestions(prefix);
+    }
+
     /// Build a QuickOpenContext from current editor state
     pub(super) fn build_quick_open_context(&self) -> QuickOpenContext {
         let open_buffers = self
