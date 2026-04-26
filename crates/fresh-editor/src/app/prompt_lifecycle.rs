@@ -203,6 +203,7 @@ impl Editor {
                 .and_then(|m| m.virtual_mode())
                 .map(|s| s.to_string()),
             has_lsp_config,
+            relative_line_numbers: self.config.editor.relative_line_numbers,
         }
     }
 
@@ -230,7 +231,18 @@ impl Editor {
         // valid line N, jump there now so the user sees the target as they type
         // (matches VSCode's Ctrl+P :<N> behavior). Otherwise, restore the
         // cursor to its pre-preview position.
-        let target = Self::parse_quick_open_goto_line_target(input);
+        //
+        // Skip preview when relative_line_numbers is enabled in config, OR when
+        // input uses relative syntax (:-/:+), as preview jumps as user
+        // types each digit, which is confusing.
+        let input = input.trim();
+        let is_relative_syntax = input == ":" || input.starts_with(":-") || input.starts_with(":+");
+        let is_relative_config = self.config.editor.relative_line_numbers;
+        let target = if is_relative_syntax || is_relative_config {
+            None
+        } else {
+            Self::parse_quick_open_goto_line_target(input)
+        };
         self.apply_goto_line_preview(target);
     }
 
@@ -941,14 +953,19 @@ impl Editor {
                 }
             }
             PromptType::GotoLine => {
-                // Reset history navigation when user types - allows Up to navigate history
+                // Reset history navigation when user types - allows Up to navigate Up arrow history
                 if let Some(history) = self.prompt_histories.get_mut("goto_line") {
                     history.reset_navigation();
                 }
-                // Live preview the target line as the user types — same
-                // mechanism as Quick Open's `:<N>` syntax, just with the raw
-                // input as the line number.
-                let target = input.trim().parse::<usize>().ok().filter(|&n| n > 0);
+                // Live preview for absolute line numbers only. For relative numbers,
+                // preview jumps as user types each digit (confusing),
+                // so skip preview and jump on Enter only.
+                let input = input.trim();
+                let target = if self.config.editor.relative_line_numbers {
+                    None
+                } else {
+                    input.parse::<usize>().ok().filter(|&n| n > 0)
+                };
                 self.apply_goto_line_preview(target);
             }
             PromptType::OpenFile | PromptType::SwitchProject | PromptType::SaveFileAs => {

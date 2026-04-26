@@ -197,7 +197,7 @@ impl QuickOpenProvider for GotoLineProvider {
         ":"
     }
 
-    fn suggestions(&self, query: &str, _context: &QuickOpenContext) -> Vec<Suggestion> {
+    fn suggestions(&self, query: &str, context: &QuickOpenContext) -> Vec<Suggestion> {
         if query.is_empty() {
             return vec![
                 Suggestion::disabled(t!("quick_open.goto_line_hint").to_string())
@@ -205,18 +205,46 @@ impl QuickOpenProvider for GotoLineProvider {
             ];
         }
 
-        match query.parse::<usize>() {
-            Ok(n) if n > 0 => {
-                vec![
-                    Suggestion::new(t!("quick_open.goto_line", line = n.to_string()).to_string())
-                        .with_description(t!("quick_open.press_enter").to_string())
-                        .with_value(n.to_string()),
-                ]
+        if context.relative_line_numbers {
+            if query == "-" || query == "+" {
+                return vec![
+                    Suggestion::disabled(t!("quick_open.goto_line_hint").to_string())
+                        .with_description(t!("quick_open.relative_line_desc").to_string()),
+                ];
             }
-            _ => vec![
-                Suggestion::disabled(t!("quick_open.invalid_line").to_string())
-                    .with_description(query.to_string()),
-            ],
+
+            match query.parse::<isize>() {
+                Ok(n) if n != 0 => {
+                    vec![Suggestion::new(
+                        t!("quick_open.goto_line", line = n.to_string()).to_string(),
+                    )
+                    .with_description(t!("quick_open.press_enter").to_string())
+                    .with_value(n.to_string())]
+                }
+                _ => vec![
+                    Suggestion::disabled(t!("quick_open.invalid_line").to_string())
+                        .with_description(query.to_string()),
+                ],
+            }
+        } else if query.starts_with('-') || query.starts_with('+') {
+            vec![
+                Suggestion::disabled(t!("quick_open.requires_relative").to_string())
+                    .with_description(t!("quick_open.negative_requires_relative").to_string()),
+            ]
+        } else {
+            match query.parse::<usize>() {
+                Ok(n) if n > 0 => {
+                    vec![Suggestion::new(
+                        t!("quick_open.goto_line", line = n.to_string()).to_string(),
+                    )
+                    .with_description(t!("quick_open.press_enter").to_string())
+                    .with_value(n.to_string())]
+                }
+                _ => vec![
+                    Suggestion::disabled(t!("quick_open.invalid_line").to_string())
+                        .with_description(query.to_string()),
+                ],
+            }
         }
     }
 
@@ -224,14 +252,22 @@ impl QuickOpenProvider for GotoLineProvider {
         &self,
         suggestion: Option<&Suggestion>,
         _query: &str,
-        _context: &QuickOpenContext,
+        context: &QuickOpenContext,
     ) -> QuickOpenResult {
-        suggestion
-            .and_then(|s| s.value.as_deref())
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|&n| n > 0)
-            .map(QuickOpenResult::GotoLine)
-            .unwrap_or(QuickOpenResult::None)
+        if context.relative_line_numbers {
+            suggestion
+                .and_then(|s| s.value.as_deref())
+                .and_then(|v| v.parse::<isize>().ok())
+                .map(QuickOpenResult::GotoLine)
+                .unwrap_or(QuickOpenResult::None)
+        } else {
+            suggestion
+                .and_then(|s| s.value.as_deref())
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n > 0)
+                .map(|n| QuickOpenResult::GotoLine(n as isize))
+                .unwrap_or(QuickOpenResult::None)
+        }
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -950,6 +986,7 @@ mod tests {
             custom_contexts: std::collections::HashSet::new(),
             buffer_mode: None,
             has_lsp_config: true,
+            relative_line_numbers: false,
         }
     }
 
@@ -1011,6 +1048,46 @@ mod tests {
             QuickOpenResult::GotoLine(line) => assert_eq!(line, 42),
             _ => panic!("Expected GotoLine result"),
         }
+    }
+
+    #[test]
+    fn test_goto_line_relative_mode() {
+        let provider = GotoLineProvider::new();
+
+        let mut context = make_test_context("/tmp");
+        context.relative_line_numbers = true;
+
+        let suggestions = provider.suggestions("-5", &context);
+        assert_eq!(suggestions.len(), 1);
+        assert!(!suggestions[0].disabled);
+
+        let suggestions = provider.suggestions("+3", &context);
+        assert_eq!(suggestions.len(), 1);
+        assert!(!suggestions[0].disabled);
+
+        let suggestions = provider.suggestions("-", &context);
+        assert_eq!(suggestions.len(), 1);
+        assert!(suggestions[0].disabled);
+
+        let suggestions = provider.suggestions("+", &context);
+        assert_eq!(suggestions.len(), 1);
+        assert!(suggestions[0].disabled);
+    }
+
+    #[test]
+    fn test_goto_line_relative_negative_without_mode() {
+        let provider = GotoLineProvider::new();
+
+        let context = make_test_context("/tmp");
+
+        let suggestions = provider.suggestions("-5", &context);
+        assert_eq!(suggestions.len(), 1);
+        assert!(suggestions[0].disabled);
+        assert!(suggestions[0]
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("requires_relative"));
     }
 
     // ====================================================================

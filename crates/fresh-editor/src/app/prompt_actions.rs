@@ -116,26 +116,62 @@ impl Editor {
                     self.perform_replace(&search, &input);
                 }
             }
-            PromptType::GotoLine => match input.trim().parse::<usize>() {
-                Ok(line_num) if line_num > 0 => {
-                    // Commit the live preview (if any): the cursor is already
-                    // at the target, so just drop the snapshot rather than
-                    // letting a later focus-loss path restore the pre-preview
-                    // position over the confirmed jump.
-                    self.goto_line_preview = None;
-                    self.goto_line_col(line_num, None);
-                    self.set_status_message(t!("goto.jumped", line = line_num).to_string());
+            PromptType::GotoLine => {
+                let input = input.trim();
+                let buffer_id = self.active_buffer();
+                if let Some(state) = self.buffers.get(&buffer_id) {
+                    let max_line = state.buffer.line_count().unwrap_or(1);
+                    if self.config.editor.relative_line_numbers {
+                        match input.parse::<isize>() {
+                            Ok(delta) if delta != 0 => {
+                                let current_line = state.primary_cursor_line_number.value() + 1;
+                                let target = if delta >= 0 {
+                                    current_line.saturating_add(delta as usize)
+                                } else {
+                                    current_line.saturating_sub(delta.unsigned_abs())
+                                };
+                                let target = target.clamp(1, max_line);
+                                self.goto_line_col(target, None);
+                                self.set_status_message(
+                                    t!("goto.jumped", line = target).to_string(),
+                                );
+                            }
+                            Ok(_) => {
+                                self.set_status_message(
+                                    t!("goto.line_must_be_positive").to_string(),
+                                );
+                            }
+                            Err(_) => {
+                                self.set_status_message(
+                                    t!("error.invalid_line", input = input).to_string(),
+                                );
+                            }
+                        }
+                    } else {
+                        match input.parse::<usize>() {
+                            Ok(line_num) if line_num > 0 => {
+                                let target = line_num.clamp(1, max_line);
+                                self.goto_line_col(target, None);
+                                self.set_status_message(
+                                    t!("goto.jumped", line = target).to_string(),
+                                );
+                            }
+                            Ok(_) => {
+                                self.set_status_message(
+                                    t!("goto.line_must_be_positive").to_string(),
+                                );
+                            }
+                            Err(_) => {
+                                self.set_status_message(
+                                    t!("error.invalid_line", input = input).to_string(),
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    self.set_status_message(t!("status.no_selection").to_string());
                 }
-                Ok(_) => {
-                    // Invalid (0): the last `update_prompt_suggestions` call
-                    // already restored the snapshot, leaving the cursor where
-                    // it was before the preview. Nothing to do here.
-                    self.set_status_message(t!("goto.line_must_be_positive").to_string());
-                }
-                Err(_) => {
-                    self.set_status_message(t!("error.invalid_line", input = &input).to_string());
-                }
-            },
+            }
             PromptType::GotoByteOffset => {
                 // Parse byte offset — strip optional trailing 'B' or 'b' suffix
                 let trimmed = input.trim();
@@ -1454,8 +1490,28 @@ impl Editor {
                 PromptResult::Done
             }
             QuickOpenResult::GotoLine(line) => {
-                self.goto_line_col(line, None);
-                self.set_status_message(t!("goto.jumped", line = line).to_string());
+                let buffer_id = self.active_buffer();
+                if let Some(state) = self.buffers.get(&buffer_id) {
+                    let max_line = state.buffer.line_count().unwrap_or(1);
+                    if self.config.editor.relative_line_numbers {
+                        let current_line = state.primary_cursor_line_number.value() + 1;
+                        let delta = line;
+                        let target = if delta >= 0 {
+                            current_line.saturating_add(delta as usize)
+                        } else {
+                            current_line.saturating_sub(delta.unsigned_abs())
+                        };
+                        let target = target.clamp(1, max_line);
+                        self.goto_line_col(target, None);
+                        self.set_status_message(t!("goto.jumped", line = target).to_string());
+                    } else {
+                        let target = line.unsigned_abs().clamp(1, max_line);
+                        self.goto_line_col(target, None);
+                        self.set_status_message(t!("goto.jumped", line = target).to_string());
+                    }
+                } else {
+                    self.set_status_message(t!("status.no_selection").to_string());
+                }
                 PromptResult::Done
             }
             QuickOpenResult::None => {

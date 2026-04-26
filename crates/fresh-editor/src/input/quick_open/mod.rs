@@ -32,8 +32,8 @@ pub enum QuickOpenResult {
     },
     /// Show a buffer by ID
     ShowBuffer(usize),
-    /// Go to a line in the current buffer
-    GotoLine(usize),
+    /// Go to a line in the current buffer (positive = absolute line, negative = relative to current)
+    GotoLine(isize),
     /// Do nothing (provider handled it internally)
     None,
     /// Show an error message
@@ -61,6 +61,8 @@ pub struct QuickOpenContext {
     pub buffer_mode: Option<String>,
     /// Whether the active buffer's language has an LSP server configured
     pub has_lsp_config: bool,
+    /// Whether relative line numbers are enabled
+    pub relative_line_numbers: bool,
 }
 
 /// Information about an open buffer
