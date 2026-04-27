@@ -1,5 +1,69 @@
 # Release Notes
 
+## 0.3.1
+
+### Features
+
+* **Animations framework**: tab-switch slide; cursor-jump trail animation. Disable it via Settings UI. Animations available to plugins via API.
+
+* **Flash plugin** (label-jump, à la flash.nvim): bundled plugin — type a pattern, press the displayed label to jump, even across split panes.
+
+* **Devcontainer fixes**: See below
+
+### Improvements
+
+* **Relative-numbers go-to negative** (thanks @paveloparev!): `g<-N>` jumps N lines up in relative-numbers mode.
+
+* **Racket language support**: `.rkt` / `.rktd` / `.rktl` / `.scrbl` highlight out of the box; LSP via `racket-langserver`.
+
+* **`{remote}` indicator default-on**: rendered on bottom-left for fresh installs (`F6` default keybinding, palette command).
+
+* **Quick Open keybindings** (thanks @paveloparev!): `Ctrl+'` for files, `Ctrl+;` for buffers. Some terminals don't like passing these keys, you can rebind in the Keybinding UI (future version will probably change the default shortcuts to be more terminal-friendly across platforms).
+
+* **Completion popup rebindable** (#1705): Allow modifying key bindings for the non-lsp completions popup.
+
+* **Better scrolling** on markdown preview buffers and very-long-line buffers via a new two-tier line-wrap cache.
+
+* **LSP**:
+    - Stuck request no longer blocks others (#1679): per-server handlers on independent tokio tasks + 30 s timeout. R `languageserver` 0.3.17 no longer wedges completion / signature help.
+    - Empty-server completion fallback to buffer-word completions.
+    - Failure-stub log so "View Log" works after a failed spawn.
+
+* **Devcontainer** spec-conformance + UX:
+    - Lifecycle `cwd = remoteWorkspaceFolder`; object-form entries run in parallel and continue past failures; `remoteEnv` propagated; `shutdownAction: stopContainer` honoured on Detach; `userEnvProbe` captured and merged; `remoteUser` falls back per spec.
+    - Lifecycle stdout/stderr surface in the panel; `Show *` commands reuse a single panel; build log split reused not stacked; parse errors surface (and `Open Config` stays registered); `onAutoForward: notify` toasts; state-relevant commands gated by authority; no re-prompt after restart.
+    - **Devcontainer Goto-Definition across host / container**: LSP URIs translate at the boundary; container-only paths (e.g. `flask/app.py` under the venv) are fetched into a buffer.
+
+* **File explorer preview** no longer loses focus to LSP popups in the editor pane.
+
+* **Plugin types**: `tsconfig.json` for `tsc --noEmit` in CI; `editor.on(fn)` infers payload types from `HookEventMap`; `HookArgs` derives serde.
+
+* **Conceal substitution** now emits the replacement glyph for whitespace tokens (Space / Newline / Break).
+
+### Bug Fixes
+
+* **`plugins/` folder in your project no longer hides bundled commands** (#1722): Fresh stops scanning the working directory for plugins.
+
+* **Scroll & viewport**:
+    - Mouse-wheel / PageDown / scrollbar-drag now reach EOF on word-wrapped buffers, including compose-mode markdown ending in a table. Within-line scroll re-clamps; gutter calc unified.
+    - Search wrap-around Down-arrow stall: stale `scrolled_up_in_wrap` cleared on recenter.
+
+* **Non-ASCII truncation panics** (#1715, #1718): settings search/preview/description/changelog, file-browser sort-arrow header, status-bar `truncate_path`, shell `truncate_command`, map-input value previews. Text search inside rows with multi-byte glyphs no longer panics either.
+
+* **`setLayoutHints`** binds `compose_width` to the buffer, not whichever buffer is active.
+
+### Under the Hood
+
+* **Line-wrap cache** (`LineWrapCache` + tier-2 `VisualRowIndex`) becomes the single source of truth — `wrap_line` / `WrappedSegment` deleted; scroll math, cursor position, and scrollbar thumb share one pipeline.
+
+* **Marker-tree `remove_in_range`** for `SoftBreakManager` / `ConcealManager` / `OverlayManager`: O(log N + k), proptest invariants.
+
+* **`LspUri` newtype** enforces host / container URI translation at the type level.
+
+* **Refactors**: `handle_mouse_click` (764 lines) → 14 helpers; `real_main` decomposed; `plugin_dispatch` match arms extracted; `quickjs_backend` ID-allocation boilerplate collapsed; `FromJs` impls into a macro; mouse multi-click + scroll dispatch deduped.
+
+* **Test infrastructure**: fake `devcontainer` / `docker` / `pylsp` CLIs drive e2es without real binaries; plugin fixtures load from `<config_dir>/plugins/` instead of the cwd; animations default off in tests.
+
 ## 0.3.0
 
 This version brings major features and many quality-of-life improvements and bug fixes:
@@ -27,8 +91,8 @@ And more (see below). A large version is more likely to contain regression bugs,
     - Build log streams into a workspace split; failed attaches offer Retry / Show Logs / Detach via a recovery popup.
     - `initializeCommand` runs on attach.
 
-* **`init.ts`**: Fresh now auto-loads `~/.config/fresh/init.ts`! Allows you to run plugin code on startup, which complements the purely declarative config system with imperative, environment-aware logic. Use command palette `init: Edit` to generate a template with some examples. Use `init: Reload` to run it after editing. Use `--no-init` / `--safe` to skip loading.  
-    - Tip: *Enable LSP* when editing `init.ts` to get help and completions. 
+* **`init.ts`**: Fresh now auto-loads `~/.config/fresh/init.ts`! Allows you to run plugin code on startup, which complements the purely declarative config system with imperative, environment-aware logic. Use command palette `init: Edit` to generate a template with some examples. Use `init: Reload` to run it after editing. Use `--no-init` / `--safe` to skip loading.
+    - Tip: *Enable LSP* when editing `init.ts` to get help and completions.
     - Example (for the Dashboard plugin):
     ```typescript
     // in your init.ts file:
