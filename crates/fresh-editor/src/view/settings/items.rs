@@ -544,10 +544,7 @@ impl ItemBox {
 
     /// Total card height (top border + content + bottom border).
     pub fn card_height(&self) -> u16 {
-        self.top_border_rows
-            + self.control_rows
-            + self.description_rows
-            + self.bottom_border_rows
+        self.top_border_rows + self.control_rows + self.description_rows + self.bottom_border_rows
     }
 
     /// Card content rows (control + description, no borders).

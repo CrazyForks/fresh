@@ -144,43 +144,47 @@ mod tests {
 
     #[test]
     fn test_toggle_checked() {
-        test_frame(20, 1, |frame, area| {
+        test_frame(40, 1, |frame, area| {
             let state = ToggleState::new(true, "Enable");
             let colors = ToggleColors::default();
             let layout = render_toggle(frame, area, &state, &colors);
 
-            assert_eq!(layout.checkbox_area.width, 3);
-            assert_eq!(layout.full_area.width, 11); // "Enable: [✓]"
+            // Chip is "[ ✓ ACTIVE ]" = 12 cols.
+            assert_eq!(layout.checkbox_area.width, 12);
+            // "Enable" (6) + ": " (2) + chip (12) = 20.
+            assert_eq!(layout.full_area.width, 20);
         });
     }
 
     #[test]
     fn test_toggle_unchecked() {
-        test_frame(20, 1, |frame, area| {
+        test_frame(40, 1, |frame, area| {
             let state = ToggleState::new(false, "Enable");
             let colors = ToggleColors::default();
             let layout = render_toggle(frame, area, &state, &colors);
 
-            assert_eq!(layout.checkbox_area.width, 3);
+            // Same chip width either way — layout doesn't shift on toggle.
+            assert_eq!(layout.checkbox_area.width, 12);
         });
     }
 
     #[test]
     fn test_toggle_click_detection() {
-        test_frame(20, 1, |frame, area| {
+        test_frame(40, 1, |frame, area| {
             let state = ToggleState::new(true, "Enable");
             let colors = ToggleColors::default();
             let layout = render_toggle(frame, area, &state, &colors);
 
-            // Click on checkbox
-            assert!(layout.contains(0, 0));
-            assert!(layout.contains(2, 0));
+            // Click on the chip (cols 8..20).
+            assert!(layout.contains(8, 0));
+            assert!(layout.contains(15, 0));
 
-            // Click on label
+            // Click on the label (cols 0..6).
+            assert!(layout.contains(0, 0));
             assert!(layout.contains(5, 0));
 
-            // Click outside
-            assert!(!layout.contains(15, 0));
+            // Click past the chip.
+            assert!(!layout.contains(25, 0));
         });
     }
 

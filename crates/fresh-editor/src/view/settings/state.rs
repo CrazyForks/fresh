@@ -508,8 +508,7 @@ impl SettingsState {
         }
         let width = self.layout_width;
         if let Some(page) = self.pages.get(self.selected_category) {
-            self.scroll_panel
-                .update_content_height(&page.items, width);
+            self.scroll_panel.update_content_height(&page.items, width);
         }
     }
 
@@ -971,8 +970,7 @@ impl SettingsState {
         // Update content height for the new category's items
         let width = self.layout_width;
         if let Some(page) = self.pages.get(self.selected_category) {
-            self.scroll_panel
-                .update_content_height(&page.items, width);
+            self.scroll_panel.update_content_height(&page.items, width);
         }
         self.sub_focus = None;
         self.init_map_focus(true);
@@ -1954,8 +1952,7 @@ impl SettingsState {
             let selected_item = self.selected_item;
             let width = self.layout_width;
             if let Some(page) = self.pages.get(self.selected_category) {
-                self.scroll_panel
-                    .update_content_height(&page.items, width);
+                self.scroll_panel.update_content_height(&page.items, width);
                 // Ensure the dropdown item is visible with its new expanded height
                 self.scroll_panel
                     .ensure_focused_visible(&page.items, selected_item, None, width);

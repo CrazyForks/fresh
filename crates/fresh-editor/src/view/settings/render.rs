@@ -177,9 +177,12 @@ pub fn render_settings(
     // Narrow mode when inner width < 60 columns
     let narrow_mode = inner_area.width < 60;
 
-    // Always render search bar at the top (1 line height to avoid layout jump)
+    // Always render search bar at the top (1 line height to avoid layout
+    // jump), with a 1-row blank gap below it so the bar reads as a header
+    // rather than running into the panels.
     let search_area = Rect::new(inner_area.x, inner_area.y, inner_area.width, 1);
-    let search_header_height = 1;
+    let search_header_height = 1u16;
+    let search_gap = 1u16;
     if state.search_active {
         render_search_header(frame, search_area, state, theme);
     } else {
@@ -188,13 +191,12 @@ pub fn render_settings(
 
     // Footer height: 2 lines for horizontal (separator + buttons), 7 for vertical
     let footer_height = if narrow_mode { 7 } else { 2 };
+    let chrome_height = search_header_height + search_gap + footer_height;
     let content_area = Rect::new(
         inner_area.x,
-        inner_area.y + search_header_height,
+        inner_area.y + search_header_height + search_gap,
         inner_area.width,
-        inner_area
-            .height
-            .saturating_sub(search_header_height + footer_height),
+        inner_area.height.saturating_sub(chrome_height),
     );
 
     // Create layout tracker
@@ -259,34 +261,38 @@ fn render_horizontal_layout(
     theme: &Theme,
     layout: &mut SettingsLayout,
 ) {
-    // Layout: [left panel (categories)] [right panel (settings, in its own box)]
-    // The right panel gets its own rounded border, replacing the previous
-    // single-line separator. The selected category is already highlighted in
-    // the left list, so the connector character is no longer needed.
-    let chunks =
-        Layout::horizontal([Constraint::Length(24), Constraint::Min(40)]).split(content_area);
+    // Layout: [left panel (categories)] | [right panel (settings)]
+    // 24 cols for categories, 1 col for the divider, the rest for settings.
+    let chunks = Layout::horizontal([
+        Constraint::Length(24),
+        Constraint::Length(1),
+        Constraint::Min(40),
+    ])
+    .split(content_area);
 
     let categories_area = chunks[0];
-    let settings_area = chunks[1];
+    let divider_area = chunks[1];
+    let settings_area = chunks[2];
 
     // Render category list (left panel)
     render_categories(frame, categories_area, state, theme, layout);
 
-    // Draw a bordered box around the settings (right) panel.
-    let body_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.popup_border_fg));
-    let body_inner = body_block.inner(settings_area);
-    frame.render_widget(body_block, settings_area);
+    // Single straight vertical line dividing categories from settings.
+    let divider_style = Style::default().fg(theme.split_separator_fg);
+    for y in 0..divider_area.height {
+        frame.render_widget(
+            Paragraph::new("│").style(divider_style),
+            Rect::new(divider_area.x, divider_area.y + y, 1, 1),
+        );
+    }
 
-    // Inside the box, leave a 1-column gutter on each side for breathing room.
-    let horizontal_padding = 1;
+    // 1-col gutter on each side of the settings panel for breathing room.
+    let horizontal_padding = 1u16;
     let settings_inner = Rect::new(
-        body_inner.x + horizontal_padding,
-        body_inner.y,
-        body_inner.width.saturating_sub(horizontal_padding * 2),
-        body_inner.height,
+        settings_area.x + horizontal_padding,
+        settings_area.y,
+        settings_area.width.saturating_sub(horizontal_padding * 2),
+        settings_area.height,
     );
 
     if state.search_active && !state.search_results.is_empty() {
@@ -478,6 +484,27 @@ fn render_categories(
         let row_area = Rect::new(area.x, area.y + idx as u16, area.width, 1);
 
         layout.add_category(idx, row_area);
+
+        // Background color for the entire row — paints the highlight across
+        // the full panel width, including the trailing padding past the
+        // category name.
+        let row_bg = if is_selected {
+            if state.focus_panel() == FocusPanel::Categories {
+                Some(theme.menu_highlight_bg)
+            } else {
+                Some(theme.selection_bg)
+            }
+        } else if is_hovered {
+            Some(theme.menu_hover_bg)
+        } else {
+            None
+        };
+        if let Some(bg) = row_bg {
+            frame.render_widget(
+                Paragraph::new(" ".repeat(row_area.width as usize)).style(Style::default().bg(bg)),
+                row_area,
+            );
+        }
 
         let style = if is_selected {
             if state.focus_panel() == FocusPanel::Categories {
@@ -779,20 +806,22 @@ fn render_setting_item_pure(
     };
 
     // ── Section header band ────────────────────────────────────────────────
-    if let (Some(section_name), Some(header_rect)) = (
+    // Layout: blank gap on the leading rows, title on the last row of the
+    // band. This puts the breathing room above the heading and butts the
+    // title against the card it labels, which reads as "title belongs to
+    // what's below" rather than "title belongs to what's above".
+    if let (Some(section_name), Some(_header_rect)) = (
         item.section.as_deref().filter(|_| item.is_section_start),
         band_rect(0, plan.section_header_rows),
     ) {
-        // Title is on logical row 0; row 1 is a blank gap. Only paint the
-        // title row when it's actually visible (i.e. skip_top hasn't trimmed
-        // past it).
-        if skip_top == 0 && header_rect.height > 0 {
+        let title_logical_y = plan.section_header_rows.saturating_sub(1);
+        if let Some(title_rect) = band_rect(title_logical_y, 1) {
             let header_style = Style::default()
                 .fg(theme.editor_fg)
                 .add_modifier(Modifier::BOLD);
             frame.render_widget(
                 Paragraph::new(section_name).style(header_style),
-                Rect::new(header_rect.x, header_rect.y, header_rect.width, 1),
+                Rect::new(title_rect.x, title_rect.y, title_rect.width, 1),
             );
         }
     }
@@ -823,10 +852,13 @@ fn render_setting_item_pure(
             }
         }
         if !borders.is_empty() {
+            // Subdued color for the card chrome — distinct from the
+            // panel/popup border around the modal so the cards read as
+            // secondary structure, not nested popups.
             let block = Block::default()
                 .borders(borders)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(theme.popup_border_fg));
+                .border_style(Style::default().fg(theme.split_separator_fg));
             frame.render_widget(block, card_rect);
         }
     }
@@ -920,15 +952,14 @@ fn render_setting_item_pure(
 
         // Control occupies its own band at the top of the content rect.
         let control_logical_rows = plan.control_rows;
-        if let Some(control_rect) =
-            band_rect(content_logical_top, control_logical_rows).map(|r| {
-                let x = r.x.saturating_add(style.card_border_cols + style.focus_indicator_cols);
-                let w = r.width.saturating_sub(
-                    2 * style.card_border_cols + style.focus_indicator_cols,
-                );
-                Rect::new(x, r.y, w, r.height)
-            })
-        {
+        if let Some(control_rect) = band_rect(content_logical_top, control_logical_rows).map(|r| {
+            let x =
+                r.x.saturating_add(style.card_border_cols + style.focus_indicator_cols);
+            let w = r
+                .width
+                .saturating_sub(2 * style.card_border_cols + style.focus_indicator_cols);
+            Rect::new(x, r.y, w, r.height)
+        }) {
             control_layout = render_control(
                 frame,
                 control_rect,
@@ -936,9 +967,8 @@ fn render_setting_item_pure(
                 &item.name,
                 content_skip_top,
                 theme,
-                label_width.map(|w| {
-                    w.saturating_sub(style.card_border_cols + style.focus_indicator_cols)
-                }),
+                label_width
+                    .map(|w| w.saturating_sub(style.card_border_cols + style.focus_indicator_cols)),
                 item.read_only,
                 item.is_null,
             );
@@ -983,10 +1013,7 @@ fn render_setting_item_pure(
                         } else {
                             Style::default().fg(theme.line_number_fg)
                         };
-                        frame.render_widget(
-                            Paragraph::new(btn_text).style(btn_style),
-                            btn_area,
-                        );
+                        frame.render_widget(Paragraph::new(btn_text).style(btn_style), btn_area);
                         inherit_button_area = Some(btn_area);
                     }
                 }
@@ -1005,17 +1032,14 @@ fn render_setting_item_pure(
         };
 
         if desc_logical_rows > 0 {
-            if let Some(desc_rect) =
-                band_rect(plan.description_y(), desc_logical_rows).map(|r| {
-                    let x = r.x.saturating_add(
-                        style.card_border_cols + style.focus_indicator_cols,
-                    );
-                    let w = r.width.saturating_sub(
-                        2 * style.card_border_cols + style.focus_indicator_cols,
-                    );
-                    Rect::new(x, r.y, w, r.height)
-                })
-            {
+            if let Some(desc_rect) = band_rect(plan.description_y(), desc_logical_rows).map(|r| {
+                let x =
+                    r.x.saturating_add(style.card_border_cols + style.focus_indicator_cols);
+                let w = r
+                    .width
+                    .saturating_sub(2 * style.card_border_cols + style.focus_indicator_cols);
+                Rect::new(x, r.y, w, r.height)
+            }) {
                 let desc_skip = skip_top.saturating_sub(plan.description_y());
                 let max_text_width = desc_rect
                     .width
@@ -1034,12 +1058,7 @@ fn render_setting_item_pure(
                 }
                 let desc_style = Style::default().fg(theme.line_number_fg);
                 let take = desc_rect.height as usize;
-                for (i, line) in lines
-                    .iter()
-                    .skip(desc_skip as usize)
-                    .take(take)
-                    .enumerate()
-                {
+                for (i, line) in lines.iter().skip(desc_skip as usize).take(take).enumerate() {
                     frame.render_widget(
                         Paragraph::new(line.as_str()).style(desc_style),
                         Rect::new(desc_rect.x, desc_rect.y + i as u16, desc_rect.width, 1),
@@ -1050,12 +1069,11 @@ fn render_setting_item_pure(
             // No description, just a layer label on the row immediately
             // below the control.
             if let Some(layer_rect) = band_rect(plan.description_y(), 1).map(|r| {
-                let x = r.x.saturating_add(
-                    style.card_border_cols + style.focus_indicator_cols,
-                );
-                let w = r.width.saturating_sub(
-                    2 * style.card_border_cols + style.focus_indicator_cols,
-                );
+                let x =
+                    r.x.saturating_add(style.card_border_cols + style.focus_indicator_cols);
+                let w = r
+                    .width
+                    .saturating_sub(2 * style.card_border_cols + style.focus_indicator_cols);
                 Rect::new(x, r.y, w, r.height)
             }) {
                 frame.render_widget(
