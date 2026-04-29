@@ -4,7 +4,7 @@
 
 ### Features
 
-* **Live Diff plugin**: Unified-diff overlay rendered live in the editable buffer — gutter `+` / `-` / `~` glyphs, virtual lines showing prior content, and background stripes on changed lines. Updates as the file changes on disk (great for watching an agent edit your file). Opt-in via `Live Diff: Toggle (Global)` / `Live Diff: Toggle (Buffer)`. Reference selectable per buffer: `vs HEAD` / `vs Disk` / `vs Branch...` / `vs Default Branch`. `diff_nav.ts` n/p picks up live-diff hunks too. Translations for all 14 locales.
+* **Live Diff plugin** (experimental): Unified-diff overlay rendered live in the editable buffer. If your file is unmodified in the editor, it updates as the file changes on disk when auto-revert kicks in - great for watching an agent edit your file. Opt-in via `Live Diff: Toggle (Global)` / `Live Diff: Toggle (Buffer)`. Reference selectable per buffer: `vs HEAD` / `vs Disk` / `vs Branch...` / `vs Default Branch`.
 
 * **New Startup section in Settings** (open Settings and search "Startup") groups everything that fires on launch:
     - **Blank-workspace flow** (#1753) — *Auto Create Empty Buffer On Last Buffer Close* (Editor) and *Auto Open On Last Buffer Close* (File Explorer). With both off, closing the last buffer leaves a truly blank pane (no `[No Name]`, no gutter, no `~`); buffer-specific status-bar items and menu entries are suppressed, and a subdued centered hint shows the keys to escape (`Ctrl+P` / `Ctrl+O` / `Ctrl+E`).
@@ -13,15 +13,46 @@
 
 * **File explorer side** (thanks @paveloparev!): *Side* under File Explorer in Settings — left or right.
 
-* **Auto-hide prompt line**: *Show Prompt Line* now defaults off — the prompt line only appears while a prompt is active.
+* **Prompt Line now hidden by default**: *Show Prompt Line* now defaults off — the prompt line only appears while a prompt is active. Turn it back on via Settings.
 
-* **Mark mode preserved through Go to Line** so you can extend selections across the jump.
+* **Mark mode preserved through Go to Line** so you can extend selections across the jump. Use **Set Mark** command followed by **Goto Line** to start a selection and extend it to the target line.
+
+* **Copy File Path commands**: New commands: "Copy File Path" and "Copy Relative File Path" to copy current buffer's path to your clipboard. Also available by right-clicking on a tab name.
+
+* **CLI Help Localization**: The `--help` output is now fully localized using runtime i18n lookups.
+
+* **Relative +/- Goto Line**: Infers absolute vs relative jumps from a leading sign (e.g., `:+10` jumps 10 lines down, `:10` jumps to line 10).
+
+* **Rust Toolchain Update**: Updated to Rust 1.95 in `rust-toolchain.toml` to fix compatibility issues with newer LLVM/clang versions on systems like Arch Linux (#1782).
 
 ### Improvements
 
 * **Plugin loading deferred off the boot critical path** — another ~225 ms saved. Same load order, same hooks, just async.
 
 * **Popup focus**: LSP popups that auto-show on file open (status popup, hover, signature help, plugin Text overlays) no longer steal the next keystroke. They show unfocused with an `[Alt+T to focus]` hint; user-invoked popups (Completion, code actions, status-bar `{remote}`, LSP-status menu) still grab focus on show. Settings / Menu / Prompt modals take precedence over unfocused buffer popups for `Esc` / `popup_focus`.
+
+* **Status Bar visual integration** (#1711): The "Palette: Ctrl+P" hint and "LSP (on)" indicator now blend into the status bar by default. Built-in themes have been updated with coherent prominent colors for these indicators.
+
+* **Prompt interaction and scrolling** (#1660):
+    - Minimal scrolling: the suggestion list no longer recenters the selection on every move, preventing "row jumping" during navigation.
+    - Clicks no longer cause accidental list shifts; double-click correctly confirms selections.
+    - Preview-on-click supported for "Reload with encoding".
+
+* **Global Menu Bar**: "Toggle Menu Bar" state is now persisted globally across all workspaces.
+
+* **Windows integration**: High-quality app icon applied to the running window; app manifest and version info embedded in the binary.
+
+### Bug Fixes
+
+* **Windows subprocesses**: Transient console windows are now hidden when spawning subprocesses (e.g., formatters, linters).
+
+* **Terminal CWD**: Fixed shell spawning failure on Windows when the current directory has a `\\?\` UNC prefix.
+
+* **Live Diff stability**: Fixed crashes on surrogate-pair content (emojis) and corrected gutter rendering for empty lines inside added blocks.
+
+### Under the Hood
+
+* **Syntax Highlight Caching**: New multi-phase caching system (memoised scope lookups and whole-file cache for small files) significantly reduces CPU usage during rendering.
 
 ## 0.3.1
 
