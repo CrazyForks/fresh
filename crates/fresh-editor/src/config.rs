@@ -1523,6 +1523,14 @@ pub struct FileExplorerConfig {
     /// Default: true
     #[serde(default = "default_true")]
     pub auto_open_on_last_buffer_close: bool,
+
+    /// When the file explorer sidebar is open, automatically expand the
+    /// tree and highlight the file that corresponds to the active buffer
+    /// whenever you switch tabs. Set to `true` to keep the explorer
+    /// selection in sync with the active tab.
+    /// Default: false
+    #[serde(default = "default_false")]
+    pub follow_active_buffer: bool,
 }
 
 /// Width configuration for the file explorer.
@@ -1879,6 +1887,7 @@ impl Default for FileExplorerConfig {
             preview_tabs: true,
             side: default_explorer_side(),
             auto_open_on_last_buffer_close: true,
+            follow_active_buffer: false,
         }
     }
 }

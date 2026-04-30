@@ -121,6 +121,7 @@ impl Editor {
         self.ensure_active_tab_visible(active_split, buffer_id, self.effective_tabs_width());
 
         if self.file_explorer_visible
+            && self.config.file_explorer.follow_active_buffer
             && self.key_context != crate::input::keybindings::KeyContext::FileExplorer
         {
             self.sync_file_explorer_to_active_file();

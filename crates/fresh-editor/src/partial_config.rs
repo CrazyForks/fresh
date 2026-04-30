@@ -346,6 +346,7 @@ pub struct PartialFileExplorerConfig {
     pub preview_tabs: Option<bool>,
     pub side: Option<crate::config::FileExplorerSide>,
     pub auto_open_on_last_buffer_close: Option<bool>,
+    pub follow_active_buffer: Option<bool>,
 }
 
 impl Merge for PartialFileExplorerConfig {
@@ -360,6 +361,8 @@ impl Merge for PartialFileExplorerConfig {
         self.side.merge_from(&other.side);
         self.auto_open_on_last_buffer_close
             .merge_from(&other.auto_open_on_last_buffer_close);
+        self.follow_active_buffer
+            .merge_from(&other.follow_active_buffer);
     }
 }
 
@@ -766,6 +769,7 @@ impl From<&FileExplorerConfig> for PartialFileExplorerConfig {
             preview_tabs: Some(cfg.preview_tabs),
             side: Some(cfg.side),
             auto_open_on_last_buffer_close: Some(cfg.auto_open_on_last_buffer_close),
+            follow_active_buffer: Some(cfg.follow_active_buffer),
         }
     }
 }
@@ -785,6 +789,9 @@ impl PartialFileExplorerConfig {
             auto_open_on_last_buffer_close: self
                 .auto_open_on_last_buffer_close
                 .unwrap_or(defaults.auto_open_on_last_buffer_close),
+            follow_active_buffer: self
+                .follow_active_buffer
+                .unwrap_or(defaults.follow_active_buffer),
         }
     }
 }
