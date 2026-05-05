@@ -8,6 +8,7 @@ use super::items::{
 };
 use super::schema::{SettingSchema, SettingType};
 use crate::view::controls::{FocusState, TextInputState};
+use crate::app::Editor;
 use serde_json::Value;
 
 /// State for the entry detail dialog
@@ -68,6 +69,7 @@ impl EntryDialogState {
         map_path: &str,
         is_new: bool,
         no_delete: bool,
+        editor: Option<*const Editor>,
     ) -> Self {
         let mut items = Vec::new();
 
@@ -97,13 +99,13 @@ impl EntryDialogState {
             for prop in properties {
                 let field_name = prop.path.trim_start_matches('/');
                 let field_value = value.get(field_name);
-                let item = build_item_from_value(prop, field_value);
+                let item = build_item_from_value(prop, field_value, editor);
                 items.push(item);
             }
         } else {
             // For non-object types (e.g., ObjectArray, Map), build a single item
             // from the entire value so the dialog can render it
-            let item = build_item_from_value(schema, Some(value));
+            let item = build_item_from_value(schema, Some(value), editor);
             items.push(item);
         }
 
@@ -169,6 +171,7 @@ impl EntryDialogState {
         schema: &SettingSchema,
         array_path: &str,
         is_new: bool,
+        editor: Option<*const Editor>,
     ) -> Self {
         let mut items = Vec::new();
 
@@ -177,7 +180,7 @@ impl EntryDialogState {
             for prop in properties {
                 let field_name = prop.path.trim_start_matches('/');
                 let field_value = value.get(field_name);
-                let item = build_item_from_value(prop, field_value);
+                let item = build_item_from_value(prop, field_value, editor);
                 items.push(item);
             }
         }
@@ -1347,6 +1350,7 @@ mod tests {
             "/test",
             false,
             false,
+            None,
         );
 
         assert!(!dialog.items.is_empty());
@@ -1364,6 +1368,7 @@ mod tests {
             "/test",
             false,
             false,
+            None,
         );
 
         // Key + 2 properties = 3 items
@@ -1382,6 +1387,7 @@ mod tests {
             "/test",
             false,
             false,
+            None,
         );
 
         assert_eq!(dialog.get_key(), "mykey");
@@ -1397,6 +1403,7 @@ mod tests {
             "/test",
             false,
             false,
+            None,
         );
 
         let value = dialog.to_value();
@@ -1414,6 +1421,7 @@ mod tests {
             "/test",
             false, // existing entry - Key is read-only
             false, // allow delete
+            None,
         );
 
         // With is_new=false, Key is read-only and sorted first
@@ -1454,6 +1462,7 @@ mod tests {
             "/lsp",
             false,
             false,
+            None,
         );
         assert_eq!(existing.entry_path(), "/lsp/rust");
 
@@ -1466,6 +1475,7 @@ mod tests {
             "/lsp",
             true,
             false,
+            None,
         );
         assert_eq!(new_entry.entry_path(), "/lsp");
     }
@@ -1480,6 +1490,7 @@ mod tests {
             "/universal_lsp",
             true,
             false,
+            None,
         );
 
         // User types a key into the editable key field.
@@ -1505,6 +1516,7 @@ mod tests {
             "/test",
             true,
             false,
+            None,
         );
         assert_eq!(new_dialog.button_count(), 2); // Save, Cancel
 
@@ -1515,6 +1527,7 @@ mod tests {
             "/test",
             false,
             false, // allow delete
+            None,
         );
         assert_eq!(existing_dialog.button_count(), 3); // Save, Delete, Cancel
 
@@ -1526,6 +1539,7 @@ mod tests {
             "/test",
             false,
             true, // no delete (auto-managed entries like plugins)
+            None,
         );
         assert_eq!(no_delete_dialog.button_count(), 2); // Save, Cancel (no Delete)
     }

@@ -242,6 +242,7 @@ impl Editor {
             menus: crate::config::MenuConfig::translated(),
             background_process_handles: HashMap::new(),
             host_process_handles: HashMap::new(),
+            status_bar_elements: Mutex::new(HashMap::new()),
             event_broadcaster: parts.event_broadcaster,
             #[cfg(feature = "plugins")]
             pending_plugin_actions: Vec::new(),

@@ -204,7 +204,7 @@ use ratatui::{
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 // Re-export BufferId from event module for backward compatibility
@@ -320,6 +320,17 @@ pub(crate) struct GotoLinePreviewSnapshot {
     pub viewport_top_view_line_offset: usize,
     pub viewport_left_column: usize,
     pub last_jump_position: usize,
+}
+
+/// A custom status bar element registered by a plugin.
+///
+/// The `value` is updated by the plugin at runtime and read by the
+/// renderer via `StatusBarContext`.
+pub struct CustomStatusBarElement {
+    /// Human-readable name shown in Settings UI (e.g., "Git: branch")
+    pub title: String,
+    /// Current value to render (None = element is skipped).
+    pub value: Mutex<Option<String>>,
 }
 
 /// The main editor struct - manages multiple buffers, clipboard, and rendering
@@ -633,6 +644,10 @@ pub struct Editor {
 
     // `plugin_dev_workspaces` moved onto `Window` — keyed by `BufferId`,
     // and buffers are per-window, so the workspace map follows.
+
+    /// Custom status bar elements registered by plugins.
+    /// Key format: "plugin_name:token_name" (e.g., "git_statusbar:branch")
+    status_bar_elements: Mutex<HashMap<String, CustomStatusBarElement>>,
 
     // `seen_byte_ranges` moved onto `Window` — keyed by `BufferId`
     // which lives on `Window`, so the tracker follows the buffers.
@@ -1168,6 +1183,91 @@ impl Editor {
             .event_logs
             .get_mut(&buffer_id)
             .unwrap()
+    }
+
+    /// Register a custom status bar element.
+    /// Token key is "plugin_name:token_name".
+    /// Returns Err if token already registered or inputs are invalid.
+    pub fn register_status_bar_element(
+        &self,
+        plugin_name: &str,
+        token_name: &str,
+        title: &str,
+    ) -> Result<(), String> {
+        if plugin_name.is_empty() {
+            return Err("Plugin name cannot be empty".to_string());
+        }
+        if token_name.is_empty() {
+            return Err("Token name cannot be empty".to_string());
+        }
+
+        let key = format!("{}:{}", plugin_name, token_name);
+        let mut elements = self.status_bar_elements.lock().unwrap();
+
+        if elements.contains_key(&key) {
+            return Err(format!("Token '{}' already registered", key));
+        }
+
+        elements.insert(
+            key,
+            CustomStatusBarElement {
+                title: title.to_string(),
+                value: Mutex::new(None),
+            },
+        );
+        Ok(())
+    }
+
+    /// Set the value for a previously registered status bar element.
+    /// Token name format: "plugin_name:token_name".
+    pub fn set_status_bar_element_value(
+        &self,
+        name: &str,
+        value: String,
+    ) -> Result<(), String> {
+        let elements = self.status_bar_elements.lock().unwrap();
+        match elements.get(name) {
+            Some(elem) => {
+                *elem.value.lock().unwrap() = Some(value);
+                Ok(())
+            }
+            None => Err(format!("Token '{}' not found", name)),
+        }
+    }
+
+    /// Get all registered status bar elements for Settings UI.
+    /// Returns Vec of (token_key_with_braces, title).
+    pub fn get_status_bar_elements(&self) -> Vec<(String, String)> {
+        let elements = self.status_bar_elements.lock().unwrap();
+        elements
+            .iter()
+            .map(|(k, v)| (format!("{{{}}}", k), v.title.clone()))
+            .collect()
+    }
+
+    /// Get a snapshot of all token values for the renderer.
+    /// Only includes tokens with a set value (None values are filtered out).
+    pub fn get_status_bar_element_values(&self) -> HashMap<String, String> {
+        let elements = self.status_bar_elements.lock().unwrap();
+        elements
+            .iter()
+            .filter_map(|(k, v)| {
+                v.value
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|val| (k.clone(), val.clone()))
+            })
+            .collect()
+    }
+
+    /// Remove all status bar tokens belonging to a plugin.
+    /// Called when a plugin is unloaded.
+    fn remove_plugin_status_bar_elements(&self, plugin_name: &str) {
+        self.status_bar_elements
+            .lock()
+            .unwrap()
+            .retain(|k, _| !k.starts_with(&format!("{}:", plugin_name)));
     }
 }
 

@@ -1,6 +1,7 @@
 //! Status bar and prompt/minibuffer rendering
 
 use std::path::Path;
+use std::collections::HashMap;
 
 use crate::app::WarningLevel;
 use crate::config::{StatusBarConfig, StatusBarElement};
@@ -242,6 +243,10 @@ pub struct StatusBarContext<'a> {
     /// is redundant; when it's not, the filename keeps the prefix
     /// so users still see the connection at a glance.
     pub remote_indicator_on_bar: bool,
+    /// Values of custom status bar elements registered by plugins.
+    /// Key: "plugin_name:token_name", Value: current value to render.
+    /// Populated by `render.rs` before rendering.
+    pub dynamic_status_bar_elements: HashMap<String, String>,
 }
 
 /// Layout information returned from status bar rendering for mouse click detection
@@ -1019,9 +1024,9 @@ impl StatusBarRenderer {
                 })
             }
             StatusBarElement::CustomToken(key) => {
-                if let Some(value) = crate::config::get_custom_status_bar_value(key) {
+                if let Some(value) = ctx.dynamic_status_bar_elements.get(key) {
                     Some(RenderedElement {
-                        text: value,
+                        text: value.clone(),
                         kind: ElementKind::Custom,
                     })
                 } else {

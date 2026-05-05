@@ -109,6 +109,8 @@ pub struct SettingsState {
     /// User layer is the default (global settings).
     /// Project layer saves to the current project's .fresh/config.json.
     pub target_layer: ConfigLayer,
+    /// Editor reference (stored as raw pointer since Editor owns SettingsState)
+    editor_ptr: Option<*const crate::app::Editor>,
     /// Source layer for each setting path (where the value came from).
     /// Maps JSON pointer paths (e.g., "/editor/tab_size") to their source layer.
     /// Values not in this map come from system defaults.
@@ -178,7 +180,7 @@ impl SettingsState {
         let layer_sources = HashMap::new(); // Populated via set_layer_sources()
         let target_layer = ConfigLayer::User; // Default to user-global settings
         let pages =
-            super::items::build_pages(&categories, &config_value, &layer_sources, target_layer);
+            super::items::build_pages(&categories, &config_value, &layer_sources, target_layer, None);
 
         Ok(Self {
             categories,
@@ -210,6 +212,7 @@ impl SettingsState {
             scroll_panel: ScrollablePanel::new(),
             sub_focus: None,
             editing_text: false,
+            editor_ptr: None,
             hover_position: None,
             hover_hit: None,
             entry_dialog_stack: Vec::new(),
@@ -247,6 +250,17 @@ impl SettingsState {
         self.reset_dialog_selection = 0;
         self.reset_dialog_hover = None;
         self.showing_help = false;
+    }
+
+    /// Rebuild pages with current state
+    fn rebuild_pages(&mut self) {
+        self.pages = super::items::build_pages(
+            &self.categories,
+            &self.original_config,
+            &self.layer_sources,
+            self.target_layer,
+            self.editor_ptr,
+        );
     }
 
     /// Hide the settings panel
@@ -872,12 +886,7 @@ impl SettingsState {
         self.pending_changes.clear();
         self.pending_deletions.clear();
         // Rebuild pages from original config with layer info
-        self.pages = super::items::build_pages(
-            &self.categories,
-            &self.original_config,
-            &self.layer_sources,
-            self.target_layer,
-        );
+        self.rebuild_pages();
     }
 
     /// Set the target layer for saving changes.
@@ -889,12 +898,7 @@ impl SettingsState {
             self.pending_changes.clear();
             self.pending_deletions.clear();
             // Rebuild pages with new target layer (affects "modified" indicators)
-            self.pages = super::items::build_pages(
-                &self.categories,
-                &self.original_config,
-                &self.layer_sources,
-                self.target_layer,
-            );
+            self.rebuild_pages();
         }
     }
 
@@ -910,12 +914,7 @@ impl SettingsState {
         self.pending_changes.clear();
         self.pending_deletions.clear();
         // Rebuild pages with new target layer (affects "modified" indicators)
-        self.pages = super::items::build_pages(
-            &self.categories,
-            &self.original_config,
-            &self.layer_sources,
-            self.target_layer,
-        );
+        self.rebuild_pages();
     }
 
     /// Get a display name for the current target layer.
@@ -933,12 +932,14 @@ impl SettingsState {
     pub fn set_layer_sources(&mut self, sources: HashMap<String, ConfigLayer>) {
         self.layer_sources = sources;
         // Rebuild pages with new layer sources (affects "modified" indicators)
-        self.pages = super::items::build_pages(
-            &self.categories,
-            &self.original_config,
-            &self.layer_sources,
-            self.target_layer,
-        );
+        self.rebuild_pages();
+    }
+
+    /// Set the editor (called by Editor when opening settings).
+    /// This also rebuilds pages to include plugin status bar elements.
+    pub fn set_editor(&mut self, editor: &crate::app::Editor) {
+        self.editor_ptr = Some(editor as *const _);
+        self.rebuild_pages();
     }
 
     /// Get the source layer for a setting path.
@@ -1399,7 +1400,7 @@ impl SettingsState {
 
         // Create dialog from schema
         let dialog =
-            EntryDialogState::from_schema(key.clone(), value, schema, path, false, no_delete);
+            EntryDialogState::from_schema(key.clone(), value, schema, path, false, no_delete, self.editor_ptr);
         self.entry_dialog_stack.push(dialog);
     }
 
@@ -1425,6 +1426,7 @@ impl SettingsState {
             &path,
             true,
             false,
+            self.editor_ptr,
         );
         self.entry_dialog_stack.push(dialog);
     }
@@ -1444,7 +1446,7 @@ impl SettingsState {
 
         // Create dialog with empty value - user will fill it in
         let dialog =
-            EntryDialogState::for_array_item(None, &serde_json::json!({}), schema, &path, true);
+            EntryDialogState::for_array_item(None, &serde_json::json!({}), schema, &path, true, self.editor_ptr);
         self.entry_dialog_stack.push(dialog);
     }
 
@@ -1467,7 +1469,7 @@ impl SettingsState {
         };
         let path = item.path.clone();
 
-        let dialog = EntryDialogState::for_array_item(Some(index), value, schema, &path, false);
+        let dialog = EntryDialogState::for_array_item(Some(index), value, schema, &path, false, self.editor_ptr);
         self.entry_dialog_stack.push(dialog);
     }
 
@@ -1564,14 +1566,14 @@ impl SettingsState {
                     path,
                     is_new,
                     no_delete,
-                } => EntryDialogState::from_schema(key, &value, &schema, &path, is_new, no_delete),
+                } => EntryDialogState::from_schema(key, &value, &schema, &path, is_new, no_delete, self.editor_ptr),
                 NestedDialogInfo::ArrayItem {
                     index,
                     value,
                     schema,
                     path,
                     is_new,
-                } => EntryDialogState::for_array_item(index, &value, &schema, &path, is_new),
+                } => EntryDialogState::for_array_item(index, &value, &schema, &path, is_new, self.editor_ptr),
             };
             self.entry_dialog_stack.push(dialog);
         }
@@ -3136,7 +3138,7 @@ mod tests {
 
         // Parent dialog: user is editing the existing "quicklsp" entry
         // under /universal_lsp. This is the MapEntry dialog the real UI
-        // opens via `open_entry_dialog`.
+        // opened via `open_entry_dialog`.
         let parent = EntryDialogState::from_schema(
             "quicklsp".to_string(),
             &serde_json::json!([{ "enabled": true }]),
@@ -3144,6 +3146,7 @@ mod tests {
             "/universal_lsp",
             false, // existing entry
             false,
+            None,
         );
 
         // Precondition: is_single_value triggers and entry_path is correct.

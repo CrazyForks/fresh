@@ -762,16 +762,16 @@ impl Editor {
                 token_name,
                 title,
             } => {
-                if let Err(e) =
-                    crate::config::register_status_bar_element(&plugin_name, &token_name, &title)
-                {
-                    tracing::warn!("Failed to register statusbar element: {}", e);
-                }
+if let Err(e) =
+    self.register_status_bar_element(&plugin_name, &token_name, &title)
+{
+    tracing::warn!("Failed to register statusbar element: {}", e);
+}
             }
             PluginCommand::SetStatusBarElementValue { name, value } => {
-                if let Err(e) = crate::config::set_custom_status_bar_value(&name, value) {
-                    tracing::warn!("Failed to set statusbar element value: {}", e);
-                }
+if let Err(e) = self.set_status_bar_element_value(&name, value) {
+    tracing::warn!("Failed to set statusbar element value: {}", e);
+}
             }
             PluginCommand::UnregisterCommand { name } => {
                 self.handle_unregister_command(name);

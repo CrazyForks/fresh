@@ -1021,6 +1021,9 @@ impl Editor {
                 .get(&active_buf)
                 .map(|m| m.synthetic_placeholder)
                 .unwrap_or(false);
+            // Compute plugin-provided status-bar values before taking the
+            // mutable window borrow below.
+            let dynamic_status_bar_elements = self.get_status_bar_element_values();
             // Single window borrow, split into buffers + cursors so the
             // status-bar context can hold both.
             let __active_id = self.active_window;
@@ -1060,6 +1063,7 @@ impl Editor {
                         // safe default for the rare path that builds the
                         // ctx but doesn't run `render_status`.
                         remote_indicator_on_bar: false,
+                        dynamic_status_bar_elements: dynamic_status_bar_elements.clone(),
                     };
                     StatusBarRenderer::render_status_bar(
                         frame,

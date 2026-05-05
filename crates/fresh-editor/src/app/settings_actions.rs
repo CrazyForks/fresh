@@ -32,6 +32,8 @@ impl Editor {
                     if let Ok(sources) = resolver.get_layer_sources() {
                         state.set_layer_sources(sources);
                     }
+                    // Set editor for runtime plugin data (status bar elements)
+                    state.set_editor(self);
                     state.show();
                     self.settings_state = Some(state);
                 }
@@ -711,6 +713,9 @@ impl Editor {
                 if let Err(e) = unload_result {
                     tracing::error!("Failed to unload plugin '{}': {}", name, e);
                     self.set_status_message(format!("Failed to unload plugin '{}': {}", name, e));
+                } else {
+                    // Clean up status bar tokens for this plugin
+                    self.remove_plugin_status_bar_elements(&name);
                 }
             }
         }

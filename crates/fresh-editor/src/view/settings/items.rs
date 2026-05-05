@@ -9,6 +9,7 @@ use crate::view::controls::{
     TextInputState, TextListState, ToggleState,
 };
 use crate::view::ui::{FocusRegion, ScrollItem, TextEdit};
+use crate::app::Editor;
 use std::collections::{HashMap, HashSet};
 
 /// State for multiline JSON editing
@@ -239,6 +240,7 @@ fn build_dual_list_state(
     options: &[crate::view::settings::schema::EnumOption],
     current_value: Option<&serde_json::Value>,
     excluded: Vec<String>,
+    editor: Option<*const Editor>,
 ) -> DualListState {
     // Start with static schema options (built-in tokens)
     let mut all_options: Vec<(String, String)> = options
@@ -248,11 +250,14 @@ fn build_dual_list_state(
 
     // Add runtime options (custom tokens from plugins) for fields that support them
     if schema.dynamically_extendable_status_bar_elements {
-        let custom_tokens = crate::config::get_custom_status_bar_tokens();
-        for (key, display) in custom_tokens {
-            // Only add if not already present in options
-            if !all_options.iter().any(|(v, _)| v == &key) {
-                all_options.push((key, display));
+        if let Some(editor_ptr) = editor {
+            let ed = unsafe { &*editor_ptr };
+            let custom_tokens = ed.get_status_bar_elements();
+            for (key, display) in custom_tokens {
+                // Only add if not already present in options
+                if !all_options.iter().any(|(v, _)| v == &key) {
+                    all_options.push((key, display));
+                }
             }
         }
     }
@@ -831,6 +836,9 @@ pub struct BuildContext<'a> {
     pub layer_sources: &'a HashMap<String, ConfigLayer>,
     /// The layer currently being edited
     pub target_layer: ConfigLayer,
+    /// Editor reference for accessing runtime plugin data (None if not available)
+    /// Stored as raw pointer since Editor owns SettingsState
+    pub editor_ptr: Option<*const Editor>,
 }
 
 /// Convert a category tree into pages with control states
@@ -839,11 +847,13 @@ pub fn build_pages(
     config_value: &serde_json::Value,
     layer_sources: &HashMap<String, ConfigLayer>,
     target_layer: ConfigLayer,
+    editor_ptr: Option<*const Editor>,
 ) -> Vec<SettingsPage> {
     let ctx = BuildContext {
         config_value,
         layer_sources,
         target_layer,
+        editor_ptr,
     };
     categories.iter().map(|cat| build_page(cat, &ctx)).collect()
 }
@@ -1080,6 +1090,7 @@ pub fn build_item(schema: &SettingSchema, ctx: &BuildContext) -> SettingItem {
                 options,
                 current_value,
                 excluded,
+                ctx.editor_ptr,
             ))
         }
 
@@ -1212,6 +1223,7 @@ pub fn build_item(schema: &SettingSchema, ctx: &BuildContext) -> SettingItem {
 pub fn build_item_from_value(
     schema: &SettingSchema,
     current_value: Option<&serde_json::Value>,
+    editor: Option<*const Editor>,
 ) -> SettingItem {
     // Create control based on type
     let control = match &schema.setting_type {
@@ -1299,6 +1311,7 @@ pub fn build_item_from_value(
                 options,
                 current_value,
                 vec![],
+                editor,
             ))
         }
 
@@ -1535,6 +1548,7 @@ mod tests {
             config_value: config,
             layer_sources: &EMPTY_SOURCES,
             target_layer: ConfigLayer::User,
+            editor_ptr: None,
         }
     }
 
@@ -1548,6 +1562,7 @@ mod tests {
             config_value: config,
             layer_sources,
             target_layer,
+            editor_ptr: None,
         }
     }
 
