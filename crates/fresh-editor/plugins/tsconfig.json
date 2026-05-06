@@ -49,6 +49,7 @@
     "git_gutter.ts",
     "git_log.ts",
     "gleam-lsp.ts",
+    "goto_with_selection.ts",
     "go-lsp.ts",
     "graphql-lsp.ts",
     "haskell-lsp.ts",
