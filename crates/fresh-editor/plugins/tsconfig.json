@@ -48,6 +48,7 @@
     "git_grep.ts",
     "git_gutter.ts",
     "git_log.ts",
+    "git_statusbar.ts",
     "gleam-lsp.ts",
     "goto_with_selection.ts",
     "go-lsp.ts",

@@ -1,0 +1,72 @@
+{
+  "cs": {
+    "status.detecting_branch": "Detekuji větev ...",
+    "status.not_in_git": "Není v git",
+    "status.git_branch": "Git: větev"
+  },
+  "de": {
+    "status.detecting_branch": "Branch erkennen ...",
+    "status.not_in_git": "Nicht in git",
+    "status.git_branch": "Git: Branch"
+  },
+  "en": {
+    "status.detecting_branch": "Detecting branch ...",
+    "status.not_in_git": "Not in git",
+    "status.git_branch": "Git: branch"
+  },
+  "es": {
+    "status.detecting_branch": "Detectando rama ...",
+    "status.not_in_git": "No está en git",
+    "status.git_branch": "Git: rama"
+  },
+  "fr": {
+    "status.detecting_branch": "Détection de la branche ...",
+    "status.not_in_git": "Pas dans git",
+    "status.git_branch": "Git : branche"
+  },
+  "it": {
+    "status.detecting_branch": "Rilevamento branch ...",
+    "status.not_in_git": "Non in git",
+    "status.git_branch": "Git: branch"
+  },
+  "ja": {
+    "status.detecting_branch": "ブランチを検出中...",
+    "status.not_in_git": "git外",
+    "status.git_branch": "Git: ブランチ"
+  },
+  "ko": {
+    "status.detecting_branch": "브랜치 감지 중...",
+    "status.not_in_git": "git 아님",
+    "status.git_branch": "Git: 브랜치"
+  },
+  "pt-BR": {
+    "status.detecting_branch": "Detectando ramo ...",
+    "status.not_in_git": "Não está em git",
+    "status.git_branch": "Git: ramo"
+  },
+  "ru": {
+    "status.detecting_branch": "Определение ветки ...",
+    "status.not_in_git": "Не в git",
+    "status.git_branch": "Git: ветка"
+  },
+  "th": {
+    "status.detecting_branch": "กำลังตรวจจับสาขา ...",
+    "status.not_in_git": "ไม่ได้อยู่ใน git",
+    "status.git_branch": "Git: สาขา"
+  },
+  "uk": {
+    "status.detecting_branch": "Визначення гілки ...",
+    "status.not_in_git": "Не в git",
+    "status.git_branch": "Git: гілка"
+  },
+  "vi": {
+    "status.detecting_branch": "Đang phát hiện nhánh ...",
+    "status.not_in_git": "Không trong git",
+    "status.git_branch": "Git: nhánh"
+  },
+  "zh-CN": {
+    "status.detecting_branch": "正在检测分支...",
+    "status.not_in_git": "不在 git 中",
+    "status.git_branch": "Git: 分支"
+  }
+}

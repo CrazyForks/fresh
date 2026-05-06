@@ -5,7 +5,7 @@ const editor = getEditor();
 const GIT_BRANCH = "branch";
 
 let lastDetectedTimestamp = 0;
-let lastDetectedBranch = "Detecting branch ...";
+let lastDetectedBranch = editor.t("status.detecting_branch");
 
 async function getCurrentGitBranch(): Promise<string> {
   const now = Date.now();
@@ -26,7 +26,7 @@ async function getCurrentGitBranch(): Promise<string> {
 
     lastDetectedBranch = branch || "HEAD";
   } else {
-    lastDetectedBranch = "Not in git";
+    lastDetectedBranch = editor.t("status.not_in_git");
   }
 
   lastDetectedTimestamp = now;
@@ -34,7 +34,7 @@ async function getCurrentGitBranch(): Promise<string> {
   return lastDetectedBranch;
 }
 
-editor.registerStatusBarElement(GIT_BRANCH, "Git: branch");
+editor.registerStatusBarElement(GIT_BRANCH, editor.t("status.git_branch"));
 
 [
   "buffer_activated",
