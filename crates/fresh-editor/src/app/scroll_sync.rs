@@ -9,8 +9,6 @@
 //!   anchor.
 
 use crate::model::event::{BufferId, LeafId, SplitId};
-use crate::state::EditorState;
-use std::collections::HashMap;
 
 impl crate::app::window::Window {
     /// Ensure the active tab in a split is visible by adjusting its

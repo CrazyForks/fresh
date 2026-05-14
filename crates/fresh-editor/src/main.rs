@@ -4068,25 +4068,21 @@ where
         }
 
         match event {
-            CrosstermEvent::Key(key_event) => {
-                if key_event.kind == KeyEventKind::Press {
-                    let _span = tracing::trace_span!(
-                        "handle_key",
-                        code = ?key_event.code,
-                        modifiers = ?key_event.modifiers,
-                    )
-                    .entered();
-                    // Apply key translation (for input calibration)
-                    // Use editor's translator so calibration changes take effect immediately
-                    let translated_event = editor.key_translator().translate(key_event);
-                    handle_key_event(editor, translated_event)?;
-                    needs_render = true;
-                }
+            CrosstermEvent::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                let _span = tracing::trace_span!(
+                    "handle_key",
+                    code = ?key_event.code,
+                    modifiers = ?key_event.modifiers,
+                )
+                .entered();
+                // Apply key translation (for input calibration)
+                // Use editor's translator so calibration changes take effect immediately
+                let translated_event = editor.key_translator().translate(key_event);
+                handle_key_event(editor, translated_event)?;
+                needs_render = true;
             }
-            CrosstermEvent::Mouse(mouse_event) => {
-                if handle_mouse_event(editor, mouse_event)? {
-                    needs_render = true;
-                }
+            CrosstermEvent::Mouse(mouse_event) if handle_mouse_event(editor, mouse_event)? => {
+                needs_render = true;
             }
             CrosstermEvent::Resize(w, h) => {
                 editor.resize(w, h);

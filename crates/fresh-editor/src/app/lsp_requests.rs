@@ -17,9 +17,7 @@ use std::time::{Duration, Instant};
 
 use crate::model::event::{BufferId, Event};
 use crate::primitives::word_navigation::{find_word_end, find_word_start};
-use crate::state::EditorState;
 use crate::view::prompt::{Prompt, PromptType};
-use std::collections::HashMap;
 
 use crate::services::lsp::async_handler::LspHandle;
 use crate::types::LspFeature;

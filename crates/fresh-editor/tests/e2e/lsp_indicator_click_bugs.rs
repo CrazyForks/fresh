@@ -142,24 +142,6 @@ done
     script_path
 }
 
-/// Fake LSP that exits immediately with a non-zero status. Makes the
-/// editor's spawn-and-watch path fire `lsp_server_error` (caught by
-/// the embedded `rust-lsp.ts` plugin), without going down the
-/// "command not found" branch that bypasses spawn entirely.
-fn create_immediately_exiting_server_script(dir: &std::path::Path) -> std::path::PathBuf {
-    let script = "#!/bin/bash\nexit 1\n";
-    let script_path = dir.join("fake_exiting_lsp.sh");
-    std::fs::write(&script_path, script).expect("write exiting LSP script");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).unwrap();
-    }
-    script_path
-}
-
 /// Build a minimal `Config` that points the `rust` LSP at `command`
 /// (any executable that speaks LSP framing), with `auto_start = true`
 /// so opening a `.rs` file kicks the server off.
@@ -326,25 +308,6 @@ fn issue_1_click_stacks_plugin_popup_and_lsp_servers_popup() -> anyhow::Result<(
          `show_lsp_status_popup` ran. Screen:\n{screen}"
     );
     Ok(())
-}
-
-/// Run `condition` against the harness once every 50ms (with renders
-/// between checks) until it returns true or `timeout` elapses.
-/// Returns whether the condition was met.
-fn wait_for<F>(harness: &mut EditorTestHarness, timeout: Duration, mut condition: F) -> bool
-where
-    F: FnMut(&EditorTestHarness) -> bool,
-{
-    let deadline = std::time::Instant::now() + timeout;
-    while std::time::Instant::now() < deadline {
-        let _ = harness.render();
-        if condition(harness) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-        harness.advance_time(Duration::from_millis(50));
-    }
-    condition(harness)
 }
 
 // ---------------------------------------------------------------------------
