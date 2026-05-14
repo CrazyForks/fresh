@@ -17,6 +17,7 @@ pub(super) mod render_buffer;
 pub(super) mod render_composite;
 pub(super) mod render_line;
 pub(super) mod selection_sweep;
+pub(super) mod tail_fill;
 
 use super::base_tokens::build_base_tokens;
 use super::layout::{

@@ -18,6 +18,7 @@ use super::super::style::dim_color_for_tilde;
 use super::contexts::{DecorationContext, SelectionContext};
 use super::overlay_sweep::OverlayActiveSet;
 use super::selection_sweep::SelectionActiveSet;
+use super::tail_fill::{resolve_tail_fill, TailFillInput};
 use crate::app::types::ViewLineMapping;
 use crate::primitives::ansi::AnsiParser;
 use crate::primitives::display_width::char_width;
@@ -1013,104 +1014,25 @@ pub(crate) fn render_view_lines(input: LineRenderInput<'_>) -> LineRenderOutput 
             }
         }
 
-        // Fill remaining width for overlays with extend_to_line_end.
+        // Paint trailing columns with the overlay-extend bg, or fall
+        // back to the virtual-line bg. See `tail_fill` for the policy.
         {
-            // Calculate the content area width (total width minus gutter)
             let content_width = render_area.width.saturating_sub(gutter_width as u16) as usize;
             let remaining_cols = content_width.saturating_sub(rendered_cols);
-
             if remaining_cols > 0 {
-                // Highest-priority overlay that touched this visual row
-                // and asked to extend to line end. The byte-pos guard
-                // skips rows that contributed no source bytes (virtual
-                // / empty lines fall to the `virtual_line_style`
-                // fallback below).
-                let fill_style: Option<Style> =
-                    if first_line_byte_pos.is_some() && last_line_byte_pos.is_some() {
-                        overlay_sweep.fill_overlay().and_then(|overlay| {
-                            match &overlay.face {
-                                crate::view::overlay::OverlayFace::Background { color } => {
-                                    // Set both fg and bg to ensure ANSI codes are output
-                                    Some(Style::default().fg(*color).bg(*color))
-                                }
-                                crate::view::overlay::OverlayFace::Style { style } => {
-                                    // Set fg to same as bg for invisible text
-                                    style.bg.map(|bg| Style::default().fg(bg).bg(bg))
-                                }
-                                crate::view::overlay::OverlayFace::ThemedStyle {
-                                    fallback_style,
-                                    bg_theme,
-                                    ..
-                                } => {
-                                    let bg = bg_theme
-                                        .as_ref()
-                                        .and_then(|key| theme.resolve_theme_key(key))
-                                        .or(fallback_style.bg);
-                                    bg.map(|bg| Style::default().fg(bg).bg(bg))
-                                }
-                                _ => None,
-                            }
-                        })
-                    } else {
-                        None
-                    };
-
-                // Virtual lines (LineAbove / LineBelow) have no source
-                // bytes, so the overlay sweep never sees them and
-                // `fill_overlay()` returns `None`. Fall back to the
-                // virtual line's own style bg so plugins (live-diff,
-                // audit_mode) can paint a full-row stripe by setting
-                // bg on the virtual line itself, mirroring
-                // extend_to_line_end.
-                //
-                // Read the bg from `virtual_line_style` (which the
-                // virtual-line builder always sets, even when `text` is
-                // empty), with `char_styles.first()` as a fallback for
-                // any virtual ViewLine that didn't go through the
-                // builder. Empty deletion virtual rows have zero chars,
-                // so without `virtual_line_style` they used to render
-                // without the diff-remove bg stripe.
-                let fill_style = fill_style.or_else(|| {
-                    if current_view_line.line_start != LineStart::AfterInjectedNewline {
-                        return None;
-                    }
-                    let token_style =
-                        current_view_line.virtual_line_style.as_ref().or_else(|| {
-                            current_view_line
-                                .char_styles
-                                .first()
-                                .and_then(|s| s.as_ref())
-                        })?;
-                    let bg = token_style.bg.as_ref()?.to_ratatui(theme);
-                    Some(ratatui::style::Style::default().fg(bg).bg(bg))
-                });
-
-                if let Some(fill_bg) = fill_style {
-                    let fill_text = " ".repeat(remaining_cols);
-                    // Source byte for the fill cells. Virtual lines
-                    // (LineAbove / LineBelow) stay `None` so the
-                    // navigation logic in `move_visual_line` keeps
-                    // skipping over them. Source lines with no chars
-                    // (empty lines, including those inside a live-diff
-                    // green block) carry the line's start byte so the
-                    // mapping's `char_source_bytes` has at least one
-                    // `Some` entry — without this, the navigable check
-                    // there sees an all-None mapping and treats the
-                    // empty source line as a plugin-injected
-                    // decoration to skip, making the cursor jump over
-                    // it on Up/Down.
-                    let fill_source =
-                        if current_view_line.line_start == LineStart::AfterInjectedNewline {
-                            None
-                        } else {
-                            current_view_line.source_start_byte
-                        };
+                if let Some(fill) = resolve_tail_fill(TailFillInput {
+                    current_view_line,
+                    theme,
+                    overlay_fill: overlay_sweep.fill_overlay(),
+                    first_line_byte_pos,
+                    last_line_byte_pos,
+                }) {
                     push_span_with_map(
                         &mut line_spans,
                         &mut line_view_map,
-                        fill_text,
-                        fill_bg,
-                        fill_source,
+                        " ".repeat(remaining_cols),
+                        fill.style,
+                        fill.source_byte,
                     );
                 }
             }
