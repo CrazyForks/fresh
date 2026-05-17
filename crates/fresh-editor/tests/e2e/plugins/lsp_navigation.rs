@@ -4,15 +4,14 @@ use crate::common::harness::{copy_plugin, copy_plugin_lib, EditorTestHarness};
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::fs;
 
-/// Test LSP navigation functionality with a fake LSP server
+/// Test LSP navigation preview split
 ///
-/// This test verifies that the lsp_navigation plugin works correctly:
-/// 1. LSP server responds to textDocument/documentSymbol
-/// 2. The lsp_navigation plugin receives the results
-/// 3. The symbols are displayed in the command palette with correct labels
+/// Verifies that the lsp_navigation plugin shows LSP symbols in a finder
+/// with a preview split that highlights the selected symbol's range using
+/// ">" markers on match lines.
 #[test]
-#[cfg_attr(windows, ignore)] // Uses bash script for fake LSP server
-fn test_lsp_navigation_symbols() -> anyhow::Result<()> {
+#[cfg_attr(windows, ignore)]
+fn test_lsp_navigation_preview_split() -> anyhow::Result<()> {
     let temp_dir = tempfile::TempDir::new()?;
     let project_root = temp_dir.path().to_path_buf();
 
@@ -23,7 +22,6 @@ fn test_lsp_navigation_symbols() -> anyhow::Result<()> {
     copy_plugin_lib(&plugins_dir);
 
     let fake_lsp_script = r#"#!/bin/bash
-
 read_message() {
     local content_length=0
     while IFS=: read -r key value; do
@@ -36,28 +34,22 @@ read_message() {
             break
         fi
     done
-
     if [ $content_length -gt 0 ]; then
         dd bs=1 count=$content_length 2>/dev/null
     fi
 }
-
 send_message() {
     local message="$1"
     local length=${#message}
     echo -en "Content-Length: $length\r\n\r\n$message"
 }
-
 while true; do
     msg=$(read_message)
-
     if [ -z "$msg" ]; then
         break
     fi
-
     method=$(echo "$msg" | grep -o '"method":"[^"]*"' | cut -d'"' -f4)
     msg_id=$(echo "$msg" | grep -o '"id":[0-9]*' | cut -d':' -f2)
-
     case "$method" in
         "initialize")
             send_message '{"jsonrpc":"2.0","id":'$msg_id',"result":{"capabilities":{"documentSymbolProvider":true,"textDocumentSync":1}}}'
@@ -123,155 +115,59 @@ done
     );
 
     let mut harness =
-        EditorTestHarness::with_config_and_working_dir(100, 30, config, project_root.clone())?;
+        EditorTestHarness::with_config_and_working_dir(120, 30, config, project_root.clone())?;
 
     harness.open_file(&test_file)?;
     harness.process_async_and_render()?;
 
     harness.wait_until(|h| h.screen_to_string().contains("LSP (on)"))?;
 
+    // Open palette and trigger "Go to LSP Symbol"
     harness.send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)?;
     harness.process_async_and_render()?;
     harness.type_text("Go to LSP Symbol")?;
     harness.send_key(KeyCode::Enter, KeyModifiers::NONE)?;
 
     harness.wait_for_prompt()?;
-    harness.render()?;
 
+    // Wait for symbols to appear in the finder results
+    harness.wait_until(|h| h.screen_to_string().contains("[class] MyClass"))?;
+
+    // Navigate down to constructor (second item)
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE)?;
+    harness.process_async_and_render()?;
+
+    // Verify preview split shows constructor range (lines 2-4) with ">" markers
     harness.wait_until(|h| {
-        let screen = h.screen_to_string();
-        screen.contains("[class] MyClass")
-            || screen.contains("[construct] constructor")
-            || screen.contains("[method] myMethod")
+        let s = h.screen_to_string();
+        s.contains("*Preview*")
+            && s.contains(">    2 │   constructor() {")
+            && s.contains(">    3 │     return true;")
+            && s.contains(">    4 │   }")
+            && !s.contains(">    1 │ class MyClass {")
+            && !s.contains(">    5 │")
     })?;
 
-    let screen = harness.screen_to_string();
+    // Navigate down to myMethod (third item)
+    harness.send_key(KeyCode::Down, KeyModifiers::NONE)?;
+    harness.process_async_and_render()?;
 
-    assert!(
-        screen.contains("[class] MyClass"),
-        "Screen should contain '[class] MyClass'. Screen:\n{}",
-        screen
-    );
-    assert!(
-        screen.contains("[construct] constructor"),
-        "Screen should contain '[construct] constructor'. Screen:\n{}",
-        screen
-    );
-    assert!(
-        screen.contains("[method] myMethod"),
-        "Screen should contain '[method] myMethod'. Screen:\n{}",
-        screen
-    );
+    // Verify preview split updates to myMethod range (lines 6-8) with ">" markers
+    harness.wait_until(|h| {
+        let s = h.screen_to_string();
+        s.contains("*Preview*")
+            && s.contains(">    6 │   myMethod(a: number): number {")
+            && s.contains(">    7 │     return a;")
+            && s.contains(">    8 │   }")
+            && !s.contains(">    1 │ class MyClass {")
+            && !s.contains(">    5 │")
+            && !s.contains(">    9 │ }")
+    })?;
 
-    // Verify each symbol's selection using clipboard copy+paste (avoids model accessors)
-    verify_symbol_selection(
-        &mut harness,
-        &test_file,
-        |h| {
-            h.send_key(KeyCode::Up, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            Ok(())
-        },
-        &[
-            "class MyClass {",
-            "  constructor() {",
-            "    return true;",
-            "  }",
-            "",
-            "  myMethod(a: number): number {",
-            "    return a;",
-            "  }",
-            "}",
-        ],
-    )?;
-
-    verify_symbol_selection(
-        &mut harness,
-        &test_file,
-        |h| {
-            h.send_key(KeyCode::Up, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            h.send_key(KeyCode::Down, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            Ok(())
-        },
-        &["  constructor() {", "    return true;", "  }"],
-    )?;
-
-    verify_symbol_selection(
-        &mut harness,
-        &test_file,
-        |h| {
-            h.send_key(KeyCode::Up, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            h.send_key(KeyCode::Down, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            h.send_key(KeyCode::Down, KeyModifiers::NONE)?;
-            h.process_async_and_render()?;
-            Ok(())
-        },
-        &["  myMethod(a: number): number {", "    return a;", "  }"],
-    )?;
-
-    Ok(())
-}
-
-/// Navigate to a symbol via the finder, close the prompt, then verify
-/// the selection via copy → select-all → paste → screen assertion.
-fn verify_symbol_selection(
-    harness: &mut EditorTestHarness,
-    _test_file: &std::path::Path,
-    navigate: impl FnOnce(&mut EditorTestHarness) -> anyhow::Result<()>,
-    expected_lines: &[&str],
-) -> anyhow::Result<()> {
-    // Open the LSP symbols finder
-    {
-        let harness = &mut *harness;
-        harness.send_key(KeyCode::Char('p'), KeyModifiers::CONTROL)?;
-        harness.wait_for_prompt()?;
-        harness.type_text("Go to LSP Symbol")?;
-        harness.render()?;
-        harness.send_key(KeyCode::Enter, KeyModifiers::NONE)?;
-        harness.wait_for_prompt()?;
-        harness.render()?;
-        harness.wait_until(|h| h.screen_to_string().contains("[class] MyClass"))?;
-    }
-
-    // Navigate to the target symbol
-    navigate(harness)?;
-
-    // Close prompt so keyboard events go to the editor
+    // Cancel with escape and verify preview split closes
     harness.send_key(KeyCode::Esc, KeyModifiers::NONE)?;
     harness.wait_for_prompt_closed()?;
-    harness.render()?;
-
-    // Copy the selection, then paste it as the entire file content
-    harness.editor_mut().set_clipboard_for_test(String::new());
-    harness.send_key(KeyCode::Char('c'), KeyModifiers::CONTROL)?;
-    harness.render()?;
-    harness.send_key(KeyCode::Char('a'), KeyModifiers::CONTROL)?;
-    harness.render()?;
-    harness.send_key(KeyCode::Char('v'), KeyModifiers::CONTROL)?;
-    harness.render()?;
-
-    let screen = harness.screen_to_string();
-    assert!(
-        screen.contains("Past"),
-        "Should show 'Pasted' in status bar (may be truncated). Screen:\n{}",
-        screen
-    );
-    for line in expected_lines {
-        assert!(
-            screen.contains(line),
-            "Expected '{}' to be visible after copy-all-paste. Screen:\n{}",
-            line,
-            screen
-        );
-    }
-
-    // Undo the paste to restore original file content
-    harness.send_key(KeyCode::Char('z'), KeyModifiers::CONTROL)?;
-    harness.process_async_and_render()?;
+    harness.wait_until(|h| !h.screen_to_string().contains("*Preview*"))?;
 
     Ok(())
 }
