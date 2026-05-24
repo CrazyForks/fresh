@@ -574,7 +574,11 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
 const CURSOR_COL_RESERVE: usize = 3;
 
 /// Compute the cursor column (number of Unicode characters from line start)
-fn cursor_column(buffer: &crate::model::buffer::TextBuffer, cursor_position: usize, line: usize) -> usize {
+fn cursor_column(
+    buffer: &crate::model::buffer::TextBuffer,
+    cursor_position: usize,
+    line: usize,
+) -> usize {
     let line_bytes = match buffer.get_line(line) {
         Some(b) => b,
         None => return 0,
@@ -585,7 +589,8 @@ fn cursor_column(buffer: &crate::model::buffer::TextBuffer, cursor_position: usi
     };
     let line_start = buffer.line_start_offset(line).unwrap_or(0);
     let byte_col = cursor_position.saturating_sub(line_start);
-    line_text.char_indices()
+    line_text
+        .char_indices()
         .take_while(|(i, _)| *i < byte_col)
         .count()
 }
