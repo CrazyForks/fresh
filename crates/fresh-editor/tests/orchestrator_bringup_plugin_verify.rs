@@ -1,14 +1,10 @@
-//! VERIFICATION (plugins ON) for issue #2056.
+//! Specification test (plugins ON) for issue #2056.
 //!
-//! The plugins-OFF verification proved the core bring-up roots the
-//! file-explorer + title at the launch cwd even though the worktree
-//! session is the active window. This test repeats the observation
-//! with the embedded orchestrator plugin LOADED, to see whether the
-//! plugin's startup behavior moves `working_dir` to the worktree (which
-//! would re-root the explorer/title and reproduce the screenshot).
-//!
-//! It is an OBSERVATION test: it prints the measured values and asserts
-//! the truth discovered on first run.
+//! Pins the DESIRED behavior with the embedded orchestrator plugin
+//! LOADED: launching `fresh <project>` activates the project-rooted
+//! window (not the worktree session), and `working_dir` / file-explorer
+//! root / title all agree on the project. The #2056 fix is reverted on
+//! this branch, so this spec is EXPECTED TO FAIL (red) until it lands.
 
 #![cfg(feature = "plugins")]
 
@@ -109,16 +105,12 @@ fn observe_rendered_root_with_orchestrator_plugin_loaded() {
     eprintln!("title project name = {:?}", title_project);
     eprintln!("session_count      = {}", h.editor().session_count());
 
-    // Known from phase B.
-    assert_eq!(active_root, worktree, "active window root is the worktree");
-
-    // VERIFIED: loading the orchestrator plugin does NOT move
-    // working_dir / the explorer root to the worktree. The plugin does
-    // not auto-activate the persisted session on startup, so the
-    // explorer and title still root at the launch cwd — the screenshot
-    // symptom is reproduced by NEITHER the core pick nor the plugin.
+    // SPEC: with the orchestrator plugin loaded, launching in the project
+    // activates the project-rooted window (not the worktree session), and
+    // working_dir / explorer / title all agree on the project.
     let explorer_root = explorer_root.expect("file explorer should initialize");
-    assert_eq!(working_dir, project, "working_dir stays at the launch cwd even with the plugin loaded");
-    assert_eq!(explorer_root, project, "file-explorer still roots at the cwd with the plugin loaded");
-    assert_eq!(title_project.as_deref(), Some("project"), "title still shows the cwd with the plugin loaded");
+    assert_eq!(active_root, project, "the project window is active, not the worktree session");
+    assert_eq!(working_dir, project, "working_dir matches the active window's root");
+    assert_eq!(explorer_root, project, "file-explorer roots at the active (project) window");
+    assert_eq!(title_project.as_deref(), Some("project"), "title shows the project");
 }

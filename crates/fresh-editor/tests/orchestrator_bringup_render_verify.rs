@@ -1,17 +1,15 @@
-//! VERIFICATION (observation) test for issue #2056.
+//! Specification tests for the rendered bring-up UI (issue #2056).
 //!
-//! The characterization suite proved the worktree session becomes the
-//! `active_window().root`. This test goes one step further — the step
-//! that was previously analysis-only — and OBSERVES the rendered
-//! file-explorer root, the editor `working_dir`, and the derived window
-//! title after a faithful bring-up (phase B construct + phase C restore
-//! + phase D file-explorer init), to confirm whether the hijack
-//! actually reaches what the user sees in the screenshots.
+//! These pin the DESIRED end-to-end behavior — what the user should see
+//! after a faithful bring-up (construct + restore + file-explorer init):
+//! the active window, `working_dir`, the file-explorer root, and the
+//! window title must all agree on the launch project, and the
+//! file-explorer must follow the ACTIVE WINDOW (defect #3), re-rooting
+//! when the user dives into another window.
 //!
-//! Plugins are OFF: this isolates the Rust core bring-up. If the
-//! explorer/title root at the PROJECT here, the screenshot symptom is
-//! NOT produced by the core pick alone and must come from a later step
-//! (a dive / set_active_window, or the orchestrator plugin).
+//! The #2056 fix is reverted on this branch, so these specs are
+//! EXPECTED TO FAIL (red) until the fix lands. Plugins are OFF to keep
+//! the core path isolated.
 
 mod common;
 
@@ -85,7 +83,7 @@ fn pump_explorer_root(h: &mut EditorTestHarness) -> Option<PathBuf> {
 }
 
 #[test]
-fn observe_rendered_root_under_worktree_hijack() {
+fn launch_in_project_roots_rendered_ui_at_project() {
     fresh::i18n::set_locale("en");
 
     // Sandbox: data dir (holds windows.json), project (cwd), worktree.
@@ -174,94 +172,94 @@ fn observe_rendered_root_under_worktree_hijack() {
         screen.contains("WORKTREE_FILE")
     );
 
-    // The fact already proven (phase B): the active window is rooted at
-    // the worktree.
-    assert_eq!(active_root, worktree, "active window root is the worktree (known)");
-
-    // THE VERIFIED RESULT: the hijack does NOT reach the rendered UI.
-    // `working_dir` stays at the launch cwd through the whole core
-    // bring-up, and BOTH the file-explorer root and the window title
-    // derive from `working_dir` — so they root at the PROJECT, not the
-    // worktree. The screenshot symptom (explorer/title showing a foreign
-    // dir) is therefore NOT produced by the core active-window pick; it
-    // must come from a later step that moves `working_dir` to a session
-    // root (e.g. the orchestrator plugin activating the persisted session
-    // on startup, or a user dive) — which is plugins-off here.
+    // SPEC: launching `fresh <project>` activates the project-rooted
+    // window, not the worktree session — and working_dir, the
+    // file-explorer root, and the title all agree on the project.
     let explorer_root = explorer_root.expect("file explorer should initialize");
     assert_eq!(
+        active_root, project,
+        "the active window is the project-rooted one, not the worktree session"
+    );
+    assert_eq!(
         working_dir, project,
-        "editor.working_dir stays at the launch cwd after core bring-up"
+        "working_dir matches the active window's root (the project)"
     );
     assert_eq!(
         explorer_root, project,
-        "file-explorer roots at the cwd, NOT the hijacked worktree"
+        "the file-explorer roots at the active window's root (the project)"
     );
     assert_eq!(
         title_project.as_deref(),
         Some("project"),
-        "window title's project name is the cwd, NOT the worktree"
+        "the window title's project name is the project"
     );
 }
 
-/// Localizes the ACTUAL mechanism behind the screenshots.
-///
-/// At construction the active window pointer is set directly to the
-/// worktree session (id 2) WITHOUT syncing `working_dir` — hence the
-/// inconsistency the test above captured (active=worktree, working_dir
-/// =cwd). The moment anything routes through `set_active_window` (a
-/// window switch / dive), `working_dir` is set to that window's root,
-/// and the file explorer re-roots there. This is the step that turns
-/// the latent worktree-hijack into the visible "explorer shows a
-/// foreign dir" symptom.
+/// Find the window id whose root equals `root` (scans the small
+/// monotonic id space).
+fn window_id_with_root(h: &EditorTestHarness, root: &Path) -> WindowId {
+    for id in 1..=64u64 {
+        if let Some(w) = h.editor().session(WindowId(id)) {
+            if w.root == root {
+                return WindowId(id);
+            }
+        }
+    }
+    panic!("no window rooted at {}", root.display());
+}
+
+/// SPEC: launching in the project gives a consistent project-rooted UI;
+/// deliberately diving into the worktree window (an inactive shell)
+/// re-roots `working_dir`, the title, AND the file explorer at that
+/// window — and diving back restores the project. Pins the invariant
+/// `file_explorer root == active_window().root` (defect #3) across
+/// switches, instead of the file explorer being keyed off a global
+/// `working_dir` and sticking to its first-init root.
 #[test]
-fn switching_through_set_active_window_reroots_working_dir_and_explorer() {
+fn diving_between_windows_roots_the_ui_at_the_active_window() {
     let (mut h, project, worktree, _sandbox) = hijack_harness();
 
-    // At launch the active window IS the worktree (id 2), yet working_dir
-    // is the cwd — construction set the active pointer directly without
-    // syncing working_dir. This is the latent inconsistency.
-    assert_eq!(h.editor().active_window().root, worktree);
-    assert_eq!(h.editor().working_dir(), project.as_path());
-
-    // Route through set_active_window (a window switch / dive). This is
-    // the code path that syncs working_dir to the active window's root.
-    h.editor_mut().set_active_window(WindowId(1));
+    // At launch the project window is active and everything is
+    // consistent (the worktree session is an inactive shell).
     assert_eq!(
-        h.editor().working_dir(),
-        project.as_path(),
-        "switching to the base window points working_dir at the project"
+        h.editor().active_window().root,
+        project,
+        "the project window is active at launch"
+    );
+    assert_eq!(h.editor().working_dir(), project.as_path());
+    assert_eq!(
+        pump_explorer_root(&mut h),
+        Some(project.clone()),
+        "explorer roots at the active (project) window"
     );
 
-    h.editor_mut().set_active_window(WindowId(2));
+    // Dive into the worktree window (the shell).
+    let wt_id = window_id_with_root(&h, &worktree);
+    h.editor_mut().set_active_window(wt_id);
     assert_eq!(
         h.editor().working_dir(),
         worktree.as_path(),
-        "switching to the worktree window points working_dir at the WORKTREE"
+        "diving into the worktree window points working_dir at the worktree"
     );
-
-    // The window title's project name follows working_dir live — so
-    // after the switch it shows the worktree (matches the screenshots'
-    // title).
-    let title_after = h
-        .editor()
-        .working_dir()
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string);
     assert_eq!(
-        title_after.as_deref(),
+        h.editor().working_dir().file_name().and_then(|s| s.to_str()),
         Some("worktree"),
-        "the title's project name becomes the worktree after the switch"
+        "the title's project name follows the dive"
     );
-
-    // The file explorer roots at working_dir AT FIRST-INIT TIME. Opening
-    // it now (first init, while on the worktree window) roots it at the
-    // worktree — the visible explorer symptom. (Note: the root is sticky;
-    // an explorer already initialized at the cwd would NOT re-root on a
-    // later switch — see the discovery in the test above.)
     assert_eq!(
         pump_explorer_root(&mut h),
         Some(worktree.clone()),
-        "an explorer first opened while on the worktree window roots at the worktree"
+        "the file explorer follows the active window to the worktree"
+    );
+
+    // Dive back to the project window: the explorer must NOT be stuck on
+    // the worktree — it re-roots at the project.
+    let proj_id = window_id_with_root(&h, &project);
+    h.editor_mut().set_active_window(proj_id);
+    assert_eq!(h.editor().working_dir(), project.as_path());
+    assert_eq!(
+        pump_explorer_root(&mut h),
+        Some(project.clone()),
+        "diving back re-roots the explorer at the project (not sticky)"
     );
 }
