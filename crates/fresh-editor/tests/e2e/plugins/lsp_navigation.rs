@@ -171,8 +171,8 @@ done
     // Check the default (initial) selection is MyClass
     harness.render()?;
 
-    let selection = selected_suggestion_text(&harness)
-        .expect("Should find a selected suggestion row");
+    let selection =
+        selected_suggestion_text(&harness).expect("Should find a selected suggestion row");
     assert!(
         selection.contains("[class] MyClass"),
         "Default selection should show MyClass, got: {selection}"
@@ -181,15 +181,13 @@ done
     // Move to constructor (index 1)
     harness.send_key(KeyCode::Down, KeyModifiers::NONE)?;
     harness.wait_until(|h| {
-        selected_suggestion_text(h)
-            .is_some_and(|t| t.contains("[construct] constructor"))
+        selected_suggestion_text(h).is_some_and(|t| t.contains("[construct] constructor"))
     })?;
 
     // Move to myMethod (index 2)
     harness.send_key(KeyCode::Down, KeyModifiers::NONE)?;
     harness.wait_until(|h| {
-        selected_suggestion_text(h)
-            .is_some_and(|t| t.contains("[method] myMethod"))
+        selected_suggestion_text(h).is_some_and(|t| t.contains("[method] myMethod"))
     })?;
 
     Ok(())
