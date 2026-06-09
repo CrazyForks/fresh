@@ -474,6 +474,14 @@ impl crate::app::Editor {
         // skipped.
         self.adopt_active_window_authority(&previous_authority_label);
 
+        // If we just switched to a remote session that came back from disk
+        // dormant (backend spec known, live authority still the local
+        // placeholder), start reconnecting its backend now — the per-window
+        // activation the per-session design calls for. SSH/k8s reconnect from
+        // core; the agent terminals re-run in the live backend once it lands.
+        #[cfg(feature = "plugins")]
+        self.reconnect_dormant_session_if_needed(id);
+
         // Refresh the plugin state snapshot so `getCwd()` (and every
         // other snapshot field) reflects the window we just switched
         // to *before* the `active_window_changed` hook runs. Without

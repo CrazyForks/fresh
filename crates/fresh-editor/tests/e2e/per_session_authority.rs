@@ -367,3 +367,54 @@ fn attach_does_not_leak_authority_onto_background_windows() -> anyhow::Result<()
     );
     Ok(())
 }
+
+#[test]
+fn switching_to_a_dormant_remote_session_starts_reconnect() -> anyhow::Result<()> {
+    // A remote session restored from disk comes back *dormant*: its backend
+    // spec is remote but its live authority is still the local placeholder
+    // (no keepalive). Switching to it must kick off a reconnect — the
+    // per-window activation the per-session design calls for — surfaced
+    // synchronously as a "Connecting…" status before the async connect runs.
+    use fresh::services::authority::{RemoteAgentSpec, RemoteTransportSpec, SessionAuthoritySpec};
+
+    let temp = tempfile::tempdir()?;
+    let mut harness = EditorTestHarness::create(
+        100,
+        30,
+        HarnessOptions::new().with_working_dir(temp.path().to_path_buf()),
+    )?;
+
+    // A background session, made dormant-remote: a known SSH backend spec but
+    // no live connection (no keepalive), exactly the restored-from-disk state.
+    let bg_root = temp.path().join("remoteproj");
+    std::fs::create_dir_all(&bg_root)?;
+    let dormant = harness
+        .editor_mut()
+        .create_window_at(bg_root, "remoteproj".into());
+    harness.editor_mut().set_session_authority_spec(
+        dormant,
+        SessionAuthoritySpec::RemoteAgent(RemoteAgentSpec {
+            transport: RemoteTransportSpec::Ssh {
+                user: None,
+                host: "dormant-host.invalid".into(),
+                port: None,
+                identity_file: None,
+                remote_path: None,
+                extra_args: Vec::new(),
+            },
+            base_env: Vec::new(),
+            window: true,
+            label: None,
+            command: None,
+        }),
+    );
+
+    // Switching to it starts the reconnect (the connect itself runs async on
+    // the editor runtime and will fail against the bogus host — we assert the
+    // synchronous initiation, not the outcome).
+    harness.editor_mut().set_active_window(dormant);
+    harness.render()?;
+    harness.assert_screen_contains("Connecting");
+
+    Ok(())
+}

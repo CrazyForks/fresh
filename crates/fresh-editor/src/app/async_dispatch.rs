@@ -786,6 +786,36 @@ impl Editor {
                                 Err(e) => self.reject_remote_attach(request_id, e),
                             }
                         }
+                        crate::services::async_bridge::RemoteAttachMode::Reconnect {
+                            window_id,
+                        } => {
+                            // A dormant session the user switched to finished
+                            // reconnecting: re-point *that window's* authority at
+                            // the live backend and park the keepalive so the
+                            // connection survives. No new window, no restart, no
+                            // re-root (the window keeps its own root). The spec is
+                            // already on the window from restore.
+                            if self.windows.contains_key(&window_id) {
+                                tracing::info!(
+                                    "Reconnected dormant session {window_id} ({})",
+                                    authority.display_label
+                                );
+                                self.set_session_authority(window_id, authority);
+                                self.session_keepalives.insert(window_id, keepalive);
+                                self.set_status_message(format!(
+                                    "Reconnected: {}",
+                                    self.windows
+                                        .get(&window_id)
+                                        .map(|w| w.label.clone())
+                                        .unwrap_or_default()
+                                ));
+                            } else {
+                                // The window was closed while the connect was in
+                                // flight — drop the backend we just built.
+                                drop(authority);
+                                drop(keepalive);
+                            }
+                        }
                     }
                 }
                 AsyncMessage::RemoteAttachFailed { error, request_id } => {

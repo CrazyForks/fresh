@@ -3509,6 +3509,49 @@ impl Editor {
         }
     }
 
+    /// If the just-activated window is a **dormant remote** session — restored
+    /// from disk so its backend spec is remote but its live authority is still
+    /// the local placeholder (no live keepalive) — start reconnecting it. SSH /
+    /// Kubernetes reconnect from core via [`Self::start_remote_connect`]; a
+    /// container (`Plugin`) session needs its owning plugin to re-attach (only
+    /// the devcontainer plugin can run `devcontainer up`), left to a follow-up.
+    /// Idempotent: a reconnect already in flight for this window is a no-op.
+    pub(crate) fn reconnect_dormant_session_if_needed(&mut self, window_id: fresh_core::WindowId) {
+        // A live session already holds its connection (keepalive); a local
+        // session has nothing to reconnect.
+        if self.session_keepalives.contains_key(&window_id) {
+            return;
+        }
+        let Some(spec) = self
+            .windows
+            .get(&window_id)
+            .map(|w| w.authority_spec.clone())
+        else {
+            return;
+        };
+        match spec {
+            crate::services::authority::SessionAuthoritySpec::Local => {}
+            crate::services::authority::SessionAuthoritySpec::RemoteAgent(agent_spec) => {
+                // Synthetic, window-derived request id (well clear of the
+                // low-numbered JS callback ids) so the in-flight/cancel
+                // tracking works and a repeated switch doesn't double-connect.
+                let request_id = u64::MAX - window_id.0 as u64;
+                if self.remote_attach_inflight.contains(&request_id) {
+                    return;
+                }
+                self.start_remote_connect(agent_spec, Some(window_id), request_id);
+            }
+            crate::services::authority::SessionAuthoritySpec::Plugin(_) => {
+                // Container: only the owning plugin can rebuild the backend
+                // (`devcontainer up`). TODO(per-session): fire a
+                // `session_reattach_requested` hook so it can.
+                tracing::debug!(
+                    "dormant container session {window_id}: reattach is plugin-driven (TODO)"
+                );
+            }
+        }
+    }
+
     fn handle_attach_remote_agent(&mut self, payload: serde_json::Value, request_id: u64) {
         // Opaque at the fresh-core boundary; the concrete schema lives in
         // services::authority so core stays backend-agnostic.
@@ -3521,7 +3564,23 @@ impl Editor {
                     return;
                 }
             };
+        // A plugin attach: spawn a born-attached window or restart (per
+        // `spec.window`), not a reconnect of an existing one.
+        self.start_remote_connect(spec, None, request_id);
+    }
 
+    /// Spawn the async remote connect (carrier + agent bootstrap) for `spec`
+    /// and report the result back via the bridge. Shared by the plugin
+    /// `attachRemoteAgent` op and the reconnect-on-activate path:
+    /// `reconnect_window = Some(id)` re-points *that dormant window's*
+    /// authority on success (no new window / no restart); `None` follows
+    /// `spec.window` (born-attached window vs. global restart).
+    pub(crate) fn start_remote_connect(
+        &mut self,
+        spec: crate::services::authority::RemoteAgentSpec,
+        reconnect_window: Option<fresh_core::WindowId>,
+        request_id: u64,
+    ) {
         // Take owned handles up front so the immutable borrows of `self`
         // end before the mutable `set_status_message` / spawn below.
         let runtime = self.tokio_runtime.clone();
@@ -3561,7 +3620,9 @@ impl Editor {
         let session_spec =
             crate::services::authority::SessionAuthoritySpec::RemoteAgent(spec.clone());
         let mode_for = |label: &str| {
-            if window_mode {
+            if let Some(window_id) = reconnect_window {
+                crate::services::async_bridge::RemoteAttachMode::Reconnect { window_id }
+            } else if window_mode {
                 crate::services::async_bridge::RemoteAttachMode::Window {
                     label: window_label.clone().unwrap_or_else(|| label.to_string()),
                     command: window_command.clone(),

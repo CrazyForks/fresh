@@ -624,6 +624,22 @@ impl Editor {
     /// multi-session migration; until it lands, this method is the
     /// infrastructure seam, exercised by tests and the activation path,
     /// not yet the user-facing attach.
+    /// Set a session's **backend spec** — the persisted descriptor of how to
+    /// rebuild/reconnect its backend ([`SessionAuthoritySpec`]). Independent of
+    /// the live [`Authority`]: a session is *dormant* when its spec is remote
+    /// but its live authority is the local placeholder (no keepalive), which is
+    /// what `reconnect_dormant_session_if_needed` acts on. Set by the install
+    /// points (`setAuthority`, born-attached attach) and on restore.
+    pub fn set_session_authority_spec(
+        &mut self,
+        window_id: fresh_core::WindowId,
+        spec: crate::services::authority::SessionAuthoritySpec,
+    ) {
+        if let Some(w) = self.windows.get_mut(&window_id) {
+            w.authority_spec = spec;
+        }
+    }
+
     pub fn set_session_authority(
         &mut self,
         window_id: fresh_core::WindowId,

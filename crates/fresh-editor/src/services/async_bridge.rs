@@ -41,6 +41,12 @@ pub enum RemoteAttachMode {
         label: String,
         command: Option<Vec<String>>,
     },
+    /// Reconnect an **existing dormant** session: a remote session restored
+    /// from disk (its backend spec known, but its live authority still the
+    /// local placeholder) whose user just switched to it. Re-point *that
+    /// window's* authority at the freshly-connected backend and park the
+    /// keepalive — no new window, no editor restart.
+    Reconnect { window_id: fresh_core::WindowId },
 }
 
 /// A completed remote-agent attach: the assembled authority plus the
