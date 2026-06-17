@@ -3378,6 +3378,9 @@ interface HookEventMap {
 	authority_changed: {
 		label: string;
 	};
+	trust_changed: {
+		level: "trusted" | "restricted" | "blocked";
+	};
 	// ── buffer lifecycle ─────────────────────────────────────────────────────
 	buffer_activated: {
 		buffer_id: number;
