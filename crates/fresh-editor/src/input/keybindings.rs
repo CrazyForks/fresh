@@ -603,6 +603,9 @@ pub enum Action {
     PrevSplit,
     NextWindow,
     PrevWindow,
+    /// Move the focused tab's buffer into a new orchestrator workspace
+    /// rooted at the file's parent directory.
+    ExtractTabToNewWorkspace,
     NextPane,
     PrevPane,
     IncreaseSplitSize,
@@ -1114,6 +1117,7 @@ impl Action {
             "prev_split" => PrevSplit,
             "next_window" => NextWindow,
             "prev_window" => PrevWindow,
+            "extract_tab_to_new_workspace" => ExtractTabToNewWorkspace,
             "next_pane" => NextPane,
             "prev_pane" => PrevPane,
             "increase_split_size" => IncreaseSplitSize,
@@ -2636,6 +2640,7 @@ impl KeybindingResolver {
             Action::PrevSplit => t!("action.prev_split"),
             Action::NextWindow => t!("action.next_window"),
             Action::PrevWindow => t!("action.prev_window"),
+            Action::ExtractTabToNewWorkspace => t!("action.extract_tab_to_new_workspace"),
             Action::NextPane => t!("action.next_pane"),
             Action::PrevPane => t!("action.prev_pane"),
             Action::IncreaseSplitSize => t!("action.increase_split_size"),
